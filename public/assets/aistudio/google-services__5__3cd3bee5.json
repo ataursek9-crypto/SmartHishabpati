@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "484040397249",
+    "project_id": "smart-business-manager-71879",
+    "storage_bucket": "smart-business-manager-71879.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:484040397249:android:8a883b7879abd19bd6df40",
+        "android_client_info": {
+          "package_name": "com.aistudio.smartbiz.mgr"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "484040397249-h7a2qphlia4c2c6f11ecka4rjvbtjf5f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.smartbiz.mgr",
+            "certificate_hash": "cc86917eeb9c387577c490e9f319ab3db0458e67"
+          }
+        },
+        {
+          "client_id": "484040397249-h7a2qphlia4c2c6f11ecka4rjvbtjf5f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.smartbiz.mgr",
+            "certificate_hash": "2800200846ac075e40b8da178b6c953edfc04556"
+          }
+        },
+        {
+          "client_id": "484040397249-h2tfr5q8pgu65ncl9fgaslcbdsvj9kkj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8mm4ucqjTboLxRRuunqhBT9dSn-qbkEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "484040397249-h2tfr5q8pgu65ncl9fgaslcbdsvj9kkj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

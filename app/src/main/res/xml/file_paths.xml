@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="cache_invoices" path="invoices/" />
+    <cache-path name="cache_receipts" path="receipts/" />
+    <cache-path name="cache_due_reports" path="due_reports/" />
+    <files-path name="product_images" path="product_images/" />
+    <cache-path name="temp_images" path="temp_images/" />
+</paths>

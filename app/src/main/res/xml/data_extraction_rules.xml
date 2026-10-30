@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample data extraction rules file; uncomment and customize as necessary.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude local Room database from Google Drive cloud backup to prevent resurrecting deleted or sample records -->
+        <exclude domain="database" path="smart_business_database.db" />
+        <exclude domain="database" path="smart_business_database.db-wal" />
+        <exclude domain="database" path="smart_business_database.db-shm" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+    </device-transfer>
+</data-extraction-rules>

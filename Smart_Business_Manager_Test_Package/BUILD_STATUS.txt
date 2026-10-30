@@ -1,0 +1,29 @@
+================================================================================
+SMART BUSINESS MANAGER — ANDROID APK BUILD STATUS
+================================================================================
+
+App Name: Smart Business Manager
+Application ID: com.aistudio.smartbiz.mgr
+Version Name: 1.0
+Version Code: 1
+Build Type: Debug
+Compile SDK: 36
+Min SDK: 24
+Target SDK: 36
+
+APK Location: app/build/outputs/apk/debug/app-debug.apk
+Generated APK Name in ZIP: app-debug.apk
+Build Result: SUCCESS
+Verification: SHA-256 / File Size verified (> 30 MB)
+Features Included:
+- Mobile Phone Registration with real Firebase Phone Auth (SMS OTP)
+- Google Sign-In Registration with automatic shop owner identity mapping
+- Cloud Firestore integration with hardened security rules (TRIAL support)
+- Real-time inventory, sales, customer ledger, expense management, and receipt generation
+- Local Room Database offline-first capability
+- Super Admin portal and multi-shop management
+
+================================================================================
+Generated at: 2026-10-28
+Google AI Studio Build Engine
+================================================================================

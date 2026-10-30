@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Business product item with inventory and pricing details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product UUID" },
+        "name": { "type": "string", "description": "Product display name" },
+        "sku": { "type": "string", "description": "Product SKU or code" },
+        "barcode": { "type": "string", "description": "Barcode identifier" },
+        "category": { "type": "string", "description": "Category classification" },
+        "purchasePrice": { "type": "number", "description": "Confidential cost price (admin only)" },
+        "sellingPrice": { "type": "number", "description": "Retail selling price" },
+        "currentStock": { "type": "number", "description": "Current on-hand inventory" },
+        "alertStockLevel": { "type": "number", "description": "Low stock threshold" },
+        "unit": { "type": "string", "description": "Inventory measurement unit" },
+        "isActive": { "type": "boolean", "description": "Whether product is active or soft-deleted" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update server timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" },
+        "imageUri": { "type": "string", "description": "Local/remote product image URI" },
+        "imageSource": { "type": "string", "description": "Image acquisition source" },
+        "imageSourceInfo": { "type": "string", "description": "Image source metadata" }
+      },
+      "required": ["id", "name", "category", "sellingPrice", "currentStock", "businessId"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer account with ledger totals and dues",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique customer UUID" },
+        "name": { "type": "string", "description": "Customer name" },
+        "phone": { "type": "string", "description": "Customer contact number" },
+        "address": { "type": "string", "description": "Customer location" },
+        "totalBilled": { "type": "number", "description": "Total sales billed" },
+        "totalPaid": { "type": "number", "description": "Total payments received" },
+        "currentDue": { "type": "number", "description": "Outstanding balance due" },
+        "isDeleted": { "type": "boolean", "description": "Soft delete marker" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["id", "name", "phone", "currentDue", "businessId"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Sale invoice transaction",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string", "description": "Unique invoice identifier" },
+        "customerId": { "type": "string", "description": "Customer reference ID" },
+        "customerName": { "type": "string", "description": "Customer name at sale" },
+        "salesmanId": { "type": "string", "description": "Creator salesman ID" },
+        "salesmanName": { "type": "string", "description": "Creator salesman name" },
+        "subtotal": { "type": "number", "description": "Invoice subtotal" },
+        "discount": { "type": "number", "description": "Applied discount" },
+        "totalAmount": { "type": "number", "description": "Net payable amount" },
+        "paidAmount": { "type": "number", "description": "Paid amount at sale" },
+        "dueAmount": { "type": "number", "description": "Remaining invoice due" },
+        "paymentMethod": { "type": "string", "description": "Payment channel used" },
+        "isDeleted": { "type": "boolean", "description": "Soft delete flag" },
+        "items": { "type": "array", "description": "Line items sold" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["invoiceNumber", "customerId", "salesmanId", "totalAmount", "businessId"]
+    },
+    "PaymentReceipt": {
+      "title": "PaymentReceipt",
+      "description": "Due collection or payment receipt",
+      "type": "object",
+      "properties": {
+        "receiptNumber": { "type": "string", "description": "Unique receipt ID" },
+        "customerId": { "type": "string", "description": "Customer reference ID" },
+        "customerName": { "type": "string", "description": "Customer name" },
+        "salesmanId": { "type": "string", "description": "Collector ID" },
+        "amount": { "type": "number", "description": "Amount collected" },
+        "paymentMethod": { "type": "string", "description": "Payment channel" },
+        "isDeleted": { "type": "boolean", "description": "Soft delete flag" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Collection timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["receiptNumber", "customerId", "amount", "businessId"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational business expense entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Expense UUID" },
+        "salesmanId": { "type": "string", "description": "Submitter ID" },
+        "salesmanName": { "type": "string", "description": "Submitter name" },
+        "category": { "type": "string", "description": "Expense category" },
+        "amount": { "type": "number", "description": "Expense amount" },
+        "description": { "type": "string", "description": "Expense note/purpose" },
+        "status": { "type": "string", "description": "Approval status" },
+        "isDeleted": { "type": "boolean", "description": "Soft delete flag" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["id", "amount", "category", "businessId"]
+    },
+    "Tombstone": {
+      "title": "Tombstone",
+      "description": "De-synchronization tombstone preventing resurrected records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Tombstone ID" },
+        "tableName": { "type": "string", "description": "Original table name" },
+        "originalId": { "type": "string", "description": "Original entity ID" },
+        "isPermanent": { "type": "boolean", "description": "Whether deletion was permanent" },
+        "deletedAt": { "type": "string", "format": "date-time", "description": "Deletion timestamp" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["id", "tableName", "originalId", "businessId"]
+    },
+    "ProductSubmission": {
+      "title": "ProductSubmission",
+      "description": "Salesman submitted product proposal awaiting admin verification and approval",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique submission ID" },
+        "name": { "type": "string", "description": "Product candidate name" },
+        "productCode": { "type": "string", "description": "Product code / SKU" },
+        "category": { "type": "string", "description": "Product category" },
+        "purchasePrice": { "type": "number", "description": "Cost price" },
+        "sellingPrice": { "type": "number", "description": "Selling price" },
+        "initialStock": { "type": "number", "description": "Proposed initial stock" },
+        "unit": { "type": "string", "description": "Measurement unit" },
+        "description": { "type": "string", "description": "Product description" },
+        "salesmanId": { "type": "string", "description": "Submitter staff UID" },
+        "salesmanName": { "type": "string", "description": "Submitter staff name" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "NEEDS_CORRECTION", "REJECTED"], "description": "Approval status" },
+        "adminCorrectionNote": { "type": "string", "description": "Admin review note for correction" },
+        "businessId": { "type": "string", "description": "Scoped business identifier" }
+      },
+      "required": ["id", "name", "sellingPrice", "initialStock", "status", "businessId"]
+    }
+  },
+  "firestore": {
+    "/businesses/{businessId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Scoped business products and stock balances"
+    },
+    "/businesses/{businessId}/product_submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/ProductSubmission" },
+      "description": "Scoped product submission proposals awaiting admin approval"
+    },
+    "/businesses/{businessId}/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Scoped business customer profiles and dues"
+    },
+    "/businesses/{businessId}/sales/{invoiceNumber}": {
+      "schema": { "$ref": "#/entities/Sale" },
+      "description": "Scoped business sales invoices"
+    },
+    "/businesses/{businessId}/payments/{receiptNumber}": {
+      "schema": { "$ref": "#/entities/PaymentReceipt" },
+      "description": "Scoped business payment receipts"
+    },
+    "/businesses/{businessId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Scoped business expense entries"
+    },
+    "/businesses/{businessId}/tombstones/{tombstoneId}": {
+      "schema": { "$ref": "#/entities/Tombstone" },
+      "description": "Cross-device deletion synchronization tombstones"
+    },
+    "/businesses/{businessId}": {
+      "description": "Platform business registration profiles"
+    },
+    "/registered_phones/{phone}": {
+      "description": "Global phone number registry for duplicate shop registration prevention"
+    }
+  }
+}

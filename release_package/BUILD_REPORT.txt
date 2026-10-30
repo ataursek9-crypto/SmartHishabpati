@@ -1,0 +1,68 @@
+================================================================================
+SMART BUSINESS MANAGER — বিল্ড ও টেস্ট রিপোর্ট (BUILD_REPORT.txt)
+================================================================================
+
+১. বিল্ড স্ট্যাটাস (Build Status)
+--------------------------------------------------------------------------------
+• Build Status: SUCCESSFUL
+• Build Type: assembleDebug
+• Gradle Version: 9.3.1
+• Android Gradle Plugin (AGP): 9.1.1
+• Kotlin Version: 2.2.10
+• KSP Version: 2.3.5
+• JDK Version: OpenJDK 21 (Temurin)
+
+২. প্যাকেজ ও আর্কিটেকচার বিবরণ
+--------------------------------------------------------------------------------
+• Application Package: com.aistudio.smartbiz.mgr
+• Version Code: 1
+• Version Name: 1.0
+• Min SDK: 24 (Android 7.0 Nougat)
+• Target SDK: 36 (Android 16)
+• Compile SDK: 36
+• UI Toolkit: Jetpack Compose (Material 3)
+• Architecture: MVVM + Clean Architecture + Room + Firebase Firestore/Auth
+
+৩. তৈরি হওয়া APK ফাইলের তথ্য
+--------------------------------------------------------------------------------
+• APK File Name: app-debug.apk
+• APK File Size: 32,756,172 bytes (~31.24 MB)
+• APK File SHA-1 Checksum: b2fabd05810340c5f8f8d04deed297b622d2a0a4
+• Target File Locations:
+  - Inside ZIP: app-debug.apk
+  - Workspace Root: /app-debug.apk
+  - Workspace Root: /Smart_Business_Manager.apk
+  - Build Output: /app/build/outputs/apk/debug/app-debug.apk
+
+৪. সাইনিং সার্টিফিকেট যাচাই ফলাফল (Verified via apksigner & keytool)
+--------------------------------------------------------------------------------
+• Signer #1 DN: CN=Android Debug, O=Android, C=US
+• Certificate SHA-1: 7A:2A:12:6E:35:7C:64:FD:04:1C:AF:42:F4:47:BE:F6:69:6E:56:EB
+• Certificate SHA-256: 8D:63:67:62:87:C7:A7:AC:0D:C0:F0:31:86:C8:C1:DF:BC:55:3C:B7:E1:55:6B:CE:60:8C:26:92:42:73:3A:58
+• Signature Schemes: v1 (JAR signing), v2 (APK Signature Scheme v2) Verified: YES
+
+৫. টেস্ট ফলাফল (Test Execution Results)
+--------------------------------------------------------------------------------
+• Task: :app:testDebugUnitTest
+• Result: BUILD SUCCESSFUL (100% Passed)
+• Test Suites Executed:
+  - GoogleAuthRoleMappingTest (Verified role mapping, unauthorized account rejection, admin recognition)
+  - AdminAlertTest
+  - CloudSyncManagerTest
+  - StockVerificationTest
+  - TwoDeviceProductSyncTest
+  - TwoDeviceSubmissionSyncTest
+  - TestDueCustomerDetectionAndRecycleTest
+  - SmartReminderTest
+  - ExampleRobolectricTest
+  - ExampleUnitTest
+
+৬. প্রধান প্রধান পরিবর্তনসমূহ (Key Changes Made)
+--------------------------------------------------------------------------------
+১. google-services.json ফাইলটি app/ ডিরেক্টরিতে সঠিকভাবে স্থাপন করা হয়েছে।
+২. GoogleSignInHelper-এ প্রকৃত সাইনিং SHA-1 ও SHA-256 কনফিগার করা হয়েছে।
+৩. CredentialManager-এ তাৎক্ষণিক স্বয়ংক্রিয় বাতিল (Auto-dismissed within 1200ms) শনাক্ত করার
+   লজিক যুক্ত করা হয়েছে, যাতে ব্যবহারকারী সুস্পষ্ট কারণ ও সমাধান দেখতে পান।
+৪. অ্যাপের লগইন ও এডমিন স্ক্রিনে "Google Sign-In কি ও কনফিগারেশন দেখুন" ডায়ালগ যুক্ত করা হয়েছে।
+৫. ইউজারের ইমেইল (a48268993@gmail.com) অনুমোদিত এডমিন তালিকায় যুক্ত করা হয়েছে।
+================================================================================

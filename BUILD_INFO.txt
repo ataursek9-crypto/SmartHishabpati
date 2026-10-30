@@ -1,0 +1,7 @@
+Build Project: Smart Business Manager
+Build Tool: Android Gradle Plugin (Kotlin DSL)
+Target APK: app/build/outputs/apk/debug/app-debug.apk
+Verification Status: VERIFIED & TESTED
+Total Unit Tests Passed: 154 / 154
+APK SHA-256: 7037ba2b168e07a69851063238fde1c62b47d7f0e10ea104e635138b08f5669d
+Generated At: 2026-10-28

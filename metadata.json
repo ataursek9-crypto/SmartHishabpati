@@ -1,0 +1,6 @@
+{
+  "name": "SmartHishabpati",
+  "description": "হিসাব রাখুন স্মার্টভাবে — Smart Business & Accounting Management",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
