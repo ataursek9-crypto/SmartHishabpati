@@ -1,4 +1,4 @@
-Nov 01, 2026 8:16:55 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
+Nov 01, 2026 9:54:36 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
 INFO: Started WebSocket server on ws://127.0.0.1:9150
 
 API endpoint: http://127.0.0.1:8085
@@ -16,21 +16,21 @@ If you are running a Firestore in Datastore Mode project, run:
 Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.
 Dev App Server is now running.
 
-Nov 01, 2026 8:16:56 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 01, 2026 9:54:37 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected non-HTTP/2 connection.
-Nov 01, 2026 8:16:56 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 01, 2026 9:54:37 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:16:59 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 01, 2026 9:54:41 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected non-HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:16:59 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 01, 2026 9:54:41 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:00 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 01, 2026 9:54:42 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
@@ -60,7 +60,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:01 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:43 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'delete' @ L7, evaluation error at L407:24 for 'delete' @ L407, false for 'delete' @ L7, false for 'delete' @ L407
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -93,7 +93,7 @@ false for 'delete' @ L7, evaluation error at L407:24 for 'delete' @ L407, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:01 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:43 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'update' @ L7, evaluation error at L400:32 for 'update' @ L400, false for 'update' @ L7, false for 'update' @ L400
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -136,7 +136,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:01 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:44 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L431:24 for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -169,7 +169,7 @@ false for 'create' @ L7, evaluation error at L431:24 for 'create' @ L431, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:01 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:44 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -202,7 +202,7 @@ false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, eva
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:01 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:44 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -239,7 +239,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:02 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:44 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'create' @ L7, false for 'create' @ L269
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -272,7 +272,7 @@ false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:02 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:44 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'create' @ L7, false for 'create' @ L269
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -331,7 +331,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 01, 2026 8:17:02 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 01, 2026 9:54:45 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'update' @ L7, false for 'update' @ L280
 com.google.cloud.datastore.core.exception.DatastoreException: 

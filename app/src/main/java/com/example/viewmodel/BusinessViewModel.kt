@@ -998,7 +998,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             }
             when (val auth = repository.authenticateUser(phone, pin)) {
                 is BusinessRepository.AuthResult.Success -> {
-                    if (auth.user.role == UserRole.ADMIN && (auth.user.phone == "01700000000" || auth.user.id == "admin_1" || auth.user.shopId == "biz_smart_store_1")) {
+                    if (auth.user.role == UserRole.ADMIN) {
                         _currentUser.value = null
                         onResult(false, "অননুমোদিত অ্যাকাউন্ট! এটি সাধারণ বিক্রয় কর্মীদের লগইন স্ক্রিন।")
                     } else {

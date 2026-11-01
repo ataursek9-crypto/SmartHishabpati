@@ -14,9 +14,19 @@ tasks.register("exportProjectZip") {
     notCompatibleWithConfigurationCache("Requires project root directory walk and zip packaging")
 
     doLast {
-        val apkFile = file("app/build/outputs/apk/debug/app-debug.apk")
+        val standardApk = file("app/build/outputs/apk/debug/app-debug.apk")
+        val containerApk = file(".build-outputs/app-debug.apk")
+        val apkFile = when {
+            standardApk.exists() -> standardApk
+            containerApk.exists() -> {
+                standardApk.parentFile.mkdirs()
+                containerApk.copyTo(standardApk, overwrite = true)
+                standardApk
+            }
+            else -> standardApk
+        }
         if (!apkFile.exists()) {
-            throw GradleException("Build Error: APK file was not found at ${apkFile.absolutePath}")
+            throw GradleException("Build Error: APK file was not found at ${apkFile.absolutePath} or ${containerApk.absolutePath}")
         }
         val apkSize = apkFile.length()
         if (apkSize < 1000000L) {
