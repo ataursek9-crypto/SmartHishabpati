@@ -1,10 +1,19 @@
 package com.example.data.repository
 
+import android.content.Context
+import android.util.Log
 import androidx.room.withTransaction
 import com.example.data.AppDatabase
 import com.example.data.model.*
+import com.example.data.sync.CloudBusinessAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.tasks.await
 import com.example.data.service.ProductImageService
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -16,7 +25,8 @@ import java.util.UUID
 
 class BusinessRepository(
     private val db: AppDatabase,
-    val productImageService: ProductImageService? = null
+    val productImageService: ProductImageService? = null,
+    val context: Context? = null
 ) {
     val users = db.userDao().getAllUsers()
     val activeUsers = db.userDao().getAllActiveUsers()
@@ -292,50 +302,309 @@ class BusinessRepository(
         }
     }
 
+    data class ShopSelectionItem(
+        val id: String,
+        val businessName: String,
+        val address: String,
+        val district: String = "",
+        val status: String = "ACTIVE"
+    )
+
     // Role & Account Status Enforcement on Login
     sealed class AuthResult {
         data class Success(val user: User) : AuthResult()
+        data class RequiresShopSelection(val shops: List<ShopSelectionItem>, val message: String) : AuthResult()
         data class Error(val message: String) : AuthResult()
     }
 
-    suspend fun authenticateUser(phone: String, pin: String): AuthResult {
-        var user = db.userDao().getUserByPhone(phone)
-            ?: return AuthResult.Error("মোবাইল নম্বর খুঁজে পাওয়া যায়নি!")
-
-
+    suspend fun authenticateUser(
+        phone: String,
+        pin: String,
+        targetBusinessId: String? = null
+    ): AuthResult {
+        val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
+        val rawTrimmed = phone.trim()
+        val e164 = CloudBusinessAuth.normalizeToE164(phone)
         val inputHash = hashPin(pin)
-        if (user.pinHash != inputHash) {
+
+        // 1. PRIMARY ENTERPRISE ZERO-TRUST FLOW: Firebase Cloud Function Authentication
+        // Resolves shop and owner server-side, verifies PIN hash with timing-safe PBKDF2 comparison,
+        // checks transactional rate limits & brute-force, and mints an official Firebase Auth Custom Token.
+        var functionErrorMessage: String? = null
+        var isNetworkUnavailable = false
+
+        try {
+            val functions = FirebaseFunctions.getInstance()
+            val requestData = hashMapOf<String, Any>(
+                "phone" to cleanPhone,
+                "pinHash" to inputHash
+            )
+            if (!targetBusinessId.isNullOrBlank()) {
+                requestData["targetBusinessId"] = targetBusinessId
+            }
+
+            Log.d("BusinessRepo", "Calling verifyPhonePinAndCreateAuthToken for phone: $cleanPhone")
+            val result = functions.getHttpsCallable("verifyPhonePinAndCreateAuthToken")
+                .call(requestData)
+                .await()
+
+            val resultMap = result.data as? Map<*, *>
+
+            // A. Check if server returned Multi-Shop Selection requirement
+            if (resultMap != null && resultMap["requiresShopSelection"] == true) {
+                val rawShops = resultMap["shops"] as? List<*> ?: emptyList<Any>()
+                val shopList = rawShops.mapNotNull { item ->
+                    val map = item as? Map<*, *> ?: return@mapNotNull null
+                    val id = map["id"] as? String ?: return@mapNotNull null
+                    val name = map["businessName"] as? String ?: "আমার দোকান"
+                    val addr = map["address"] as? String ?: ""
+                    val dist = map["district"] as? String ?: ""
+                    val stat = map["status"] as? String ?: "ACTIVE"
+                    ShopSelectionItem(id = id, businessName = name, address = addr, district = dist, status = stat)
+                }
+                val msg = resultMap["message"] as? String ?: "অনুগ্রহ করে আপনার দোকান নির্বাচন করুন।"
+                return AuthResult.RequiresShopSelection(shopList, msg)
+            }
+
+            if (resultMap != null && resultMap["success"] == true) {
+                val customToken = resultMap["customToken"] as? String
+                val businessId = (resultMap["businessId"] as? String)?.trim() ?: ""
+                val businessName = (resultMap["businessName"] as? String)?.trim() ?: "আমার দোকান"
+                val ownerUid = (resultMap["ownerUid"] as? String)?.trim() ?: ""
+                val targetUid = (resultMap["targetUid"] as? String)?.trim() ?: ownerUid
+                val ownerName = (resultMap["ownerName"] as? String)?.trim() ?: "অ্যাডমিন"
+                val roleStr = (resultMap["role"] as? String)?.trim() ?: "ADMIN"
+                val role = if (roleStr.equals("SALESMAN", ignoreCase = true)) UserRole.SALESMAN else UserRole.ADMIN
+
+                // B. Custom Token MUST be present
+                if (customToken.isNullOrBlank()) {
+                    return AuthResult.Error("নিরাপত্তা ত্রুটি: সার্ভার থেকে বৈধ প্রমাণীকরণ টোকেন পাওয়া যায়নি!")
+                }
+
+                // C. Firebase Custom Token Authentication MUST succeed. STOP IMMEDIATELY IF FAILS!
+                val authResult = try {
+                    FirebaseAuth.getInstance().signInWithCustomToken(customToken).await()
+                } catch (authEx: Exception) {
+                    Log.e("BusinessRepo", "Firebase Custom Token authentication failed", authEx)
+                    return AuthResult.Error("Firebase প্রমাণীকরণ ব্যর্থ হয়েছে: ${authEx.localizedMessage ?: "টোকেন ত্রুটি"}")
+                }
+
+                val authenticatedFirebaseUser = authResult.user
+                    ?: return AuthResult.Error("নিরাপত্তা ত্রুটি: Firebase Auth ইউজার সেশন তৈরি করা সম্ভব হয়নি!")
+
+                // D. Verify that authenticated Firebase UID matches expected owner/staff UID
+                if (targetUid.isNotBlank() && authenticatedFirebaseUser.uid != targetUid) {
+                    FirebaseAuth.getInstance().signOut()
+                    return AuthResult.Error("নিরাপত্তা সতর্কতা: প্রমাণীকৃত UID (${authenticatedFirebaseUser.uid}) প্রত্যাশিত ব্যবহারকারী (${targetUid}) এর সাথে মেলেনি!")
+                }
+
+                // E. Verify custom token claims from ID token
+                val idTokenResult = try {
+                    authenticatedFirebaseUser.getIdToken(false).await()
+                } catch (tokEx: Exception) {
+                    Log.w("BusinessRepo", "Failed to get ID token claims: ${tokEx.message}")
+                    null
+                }
+
+                val tokenClaims = idTokenResult?.claims ?: emptyMap<String, Any>()
+                val tokenBizId = (tokenClaims["businessId"] as? String)?.trim()
+                val tokenRole = (tokenClaims["role"] as? String)?.trim()
+
+                // Security Enforcement: businessId claim MUST exist and match exactly
+                if (tokenBizId.isNullOrBlank() || tokenBizId != businessId) {
+                    FirebaseAuth.getInstance().signOut()
+                    return AuthResult.Error("নিরাপত্তা সতর্কতা: টোকেনে বৈধ প্রতিষ্ঠান আইডি অনুপস্থিত অথবা নির্বাচিত প্রতিষ্ঠানের সাথে অমিল ($tokenBizId vs $businessId)!")
+                }
+
+                // Security Enforcement: role claim MUST exist and match exactly
+                if (tokenRole.isNullOrBlank() || !tokenRole.equals(role.name, ignoreCase = true)) {
+                    FirebaseAuth.getInstance().signOut()
+                    return AuthResult.Error("নিরাপত্তা সতর্কতা: টোকেনে বৈধ ভূমিকা অনুপস্থিত অথবা অনুমোদিত ভূমিকার সাথে অমিল ($tokenRole vs ${role.name})!")
+                }
+
+                // F. Now authenticated! Read Firestore securely under zero-trust rules
+                var targetShopAddress = "বাংলাদেশ"
+                var targetShopDistrict = ""
+                var targetShopStatus = BusinessAccountStatus.ACTIVE
+
+                if (businessId.isNotBlank()) {
+                    try {
+                        val bizDoc = FirebaseFirestore.getInstance()
+                            .collection("businesses")
+                            .document(businessId)
+                            .get()
+                            .await()
+
+                        if (bizDoc.exists()) {
+                            val addr = bizDoc.getString("address") ?: ""
+                            val dist = bizDoc.getString("district") ?: ""
+                            val statusStr = bizDoc.getString("status") ?: "ACTIVE"
+                            targetShopAddress = addr
+                            targetShopDistrict = dist
+                            if (statusStr.equals("SUSPENDED", ignoreCase = true)) {
+                                targetShopStatus = BusinessAccountStatus.SUSPENDED
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w("BusinessRepo", "Authenticated Firestore business fetch notice: ${e.message}")
+                    }
+                }
+
+                if (targetShopStatus == BusinessAccountStatus.SUSPENDED) {
+                    FirebaseAuth.getInstance().signOut()
+                    return AuthResult.Error("আপনার প্রতিষ্ঠানটি ('$businessName') সাময়িক স্থগিত (Suspended) করা হয়েছে। কর্তৃপক্ষের সাথে যোগাযোগ করুন।")
+                }
+
+                // G. Provision or update user in local Room database (Online verification succeeded)
+                val effectiveUserId = targetUid.ifBlank { ownerUid.ifBlank { "admin_$businessId" } }
+                val provisionedUser = User(
+                    id = effectiveUserId,
+                    name = ownerName,
+                    phone = cleanPhone,
+                    role = role,
+                    pinHash = inputHash,
+                    isActive = true,
+                    accountStatus = UserAccountStatus.ACTIVE,
+                    shopId = businessId
+                )
+                db.userDao().insertUser(provisionedUser)
+
+                // Update CompanySettings locally
+                val existingSettings = db.companySettingsDao().getSettings()
+                val fullAddress = if (targetShopDistrict.isNotBlank()) {
+                    if (targetShopAddress.isNotBlank()) {
+                        if (targetShopAddress.contains(targetShopDistrict)) targetShopAddress.trim() else "${targetShopAddress.trim()}, ${targetShopDistrict}"
+                    } else targetShopDistrict.trim()
+                } else targetShopAddress.trim()
+
+                val newSettings = (existingSettings ?: CompanySettings(id = 1)).copy(
+                    businessName = businessName,
+                    phone = cleanPhone,
+                    address = fullAddress.ifBlank { "বাংলাদেশ" }
+                )
+                db.companySettingsDao().insertOrUpdate(newSettings)
+
+                // Persist active session in CloudBusinessAuth
+                context?.let { ctx ->
+                    CloudBusinessAuth.setActiveUserId(ctx, provisionedUser.id)
+                    CloudBusinessAuth.setStoredBusinessId(ctx, businessId, businessName, role.name)
+                }
+
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        userId = provisionedUser.id,
+                        userName = provisionedUser.name,
+                        action = "লগইন (Cloud Function & Custom Token Verified)",
+                        details = "${provisionedUser.role} হিসেবে নিরাপদ সার্ভার প্রমাণীকরণের মাধ্যমে লগইন সম্পন্ন হয়েছে।"
+                    )
+                )
+
+                return AuthResult.Success(provisionedUser)
+            }
+        } catch (fnEx: FirebaseFunctionsException) {
+            Log.w("BusinessRepo", "FirebaseFunctionsException [${fnEx.code}]: ${fnEx.message}")
+            when (fnEx.code) {
+                FirebaseFunctionsException.Code.NOT_FOUND -> {
+                    return AuthResult.Error(fnEx.message ?: "এই মোবাইল নম্বর দিয়ে কোনো নিবন্ধিত দোকান খুঁজে পাওয়া যায়নি!")
+                }
+                FirebaseFunctionsException.Code.UNAUTHENTICATED -> {
+                    return AuthResult.Error(fnEx.message ?: "ভুল পিন কোড! পুনরায় সঠিক পিন দিয়ে চেষ্টা করুন।")
+                }
+                FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED -> {
+                    return AuthResult.Error(fnEx.message ?: "অতিরিক্ত ভুল পিন দেওয়ার কারণে অ্যাকাউন্টটি ১৫ মিনিটের জন্য লক করা হয়েছে।")
+                }
+                FirebaseFunctionsException.Code.FAILED_PRECONDITION -> {
+                    return AuthResult.Error(fnEx.message ?: "নিরাপত্তা সতর্কতা: এই মোবাইল নম্বরের সাথে একাধিক দোকান যুক্ত রয়েছে। সুপার এডমিনের সাথে যোগাযোগ করুন।")
+                }
+                FirebaseFunctionsException.Code.PERMISSION_DENIED -> {
+                    return AuthResult.Error(fnEx.message ?: "অননুমোদিত প্রবেশ! আপনার প্রতিষ্ঠানটি স্থগিত বা লক করা রয়েছে।")
+                }
+                FirebaseFunctionsException.Code.UNAVAILABLE,
+                FirebaseFunctionsException.Code.DEADLINE_EXCEEDED -> {
+                    isNetworkUnavailable = true
+                    functionErrorMessage = "সার্ভার সাময়িকভাবে অনুপলব্ধ বা নেটওয়ার্ক সংযোগ বিচ্ছিন্ন।"
+                }
+                else -> {
+                    // Critical security: Internal or unhandled server errors MUST NOT trigger offline fallback
+                    return AuthResult.Error("সার্ভার প্রতিক্রিয়া ত্রুটি [${fnEx.code}]: ${fnEx.message ?: "অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।"}")
+                }
+            }
+        } catch (ex: Exception) {
+            Log.w("BusinessRepo", "Firebase Cloud Function invocation notice: ${ex.message}", ex)
+            val rootCause = generateSequence(ex as Throwable) { it.cause }.lastOrNull() ?: ex
+            if (ex is java.io.IOException ||
+                ex is java.net.UnknownHostException ||
+                ex is java.net.SocketTimeoutException ||
+                ex is java.net.ConnectException ||
+                rootCause is java.io.IOException ||
+                rootCause is java.net.UnknownHostException ||
+                (ex is java.lang.IllegalStateException && ex.message?.contains("FirebaseApp") == true)
+            ) {
+                isNetworkUnavailable = true
+                functionErrorMessage = "ইন্টারনেট সংযোগ নেই বা নেটওয়ার্ক বিচ্ছিন্ন।"
+            } else {
+                // Unexpected runtime exceptions must NOT bypass server authentication
+                return AuthResult.Error("অনলাইন প্রমাণীকরণে ত্রুটি: ${ex.localizedMessage ?: "সার্ভার সংযোগ ব্যর্থ"}")
+            }
+        }
+
+        // 2. STRICT OFFLINE SESSION: Only allowed if network is confirmed UNAVAILABLE AND a verified user ALREADY EXISTS locally
+        if (!isNetworkUnavailable) {
+            return AuthResult.Error(functionErrorMessage ?: "অনলাইন প্রমাণীকরণ ব্যর্থ হয়েছে।")
+        }
+
+        // NEVER provision a new user here. NEVER use current login attempt's input PIN to authenticate an unverified account.
+        val existingVerifiedLocalUser = db.userDao().getUserByPhone(cleanPhone)
+            ?: db.userDao().getUserByPhone(rawTrimmed)
+            ?: db.userDao().getUserByPhone(e164)
+            ?: db.userDao().getAllUsersList().firstOrNull { CloudBusinessAuth.matchesPhone(it.phone, cleanPhone) }
+
+        if (existingVerifiedLocalUser == null) {
+            // No pre-existing local user on this device -> FAIL IMMEDIATELY!
+            return AuthResult.Error(functionErrorMessage ?: "ইন্টারনেট সংযোগ নেই এবং এই ডিভাইসে কোনো পূর্ব-সংরক্ষিত অ্যাকাউন্ট পাওয়া যায়নি। প্রথমবার লগইনের জন্য ইন্টারনেট সংযোগ প্রয়োজন।")
+        }
+
+        // If a verified local user does exist, verify the input hash against their EXISTING STORED HASH ONLY
+        if (existingVerifiedLocalUser.pinHash != inputHash) {
             return AuthResult.Error("ভুল পিন কোড! পুনরায় সঠিক পিন দিয়ে চেষ্টা করুন।")
         }
 
         // Strict Enforcement for Suspended / Deactivated users
-        if (!user.isActive || user.accountStatus != UserAccountStatus.ACTIVE) {
-            val statusLabel = when (user.accountStatus) {
+        if (!existingVerifiedLocalUser.isActive || existingVerifiedLocalUser.accountStatus != UserAccountStatus.ACTIVE) {
+            val statusLabel = when (existingVerifiedLocalUser.accountStatus) {
                 UserAccountStatus.SUSPENDED -> "সাময়িক স্থগিত (Suspended)"
                 UserAccountStatus.DEACTIVATED -> "নিষ্ক্রিয় বা বিচ্ছিন্ন (Deactivated)"
                 else -> "নিষ্ক্রিয়"
             }
-            val reasonMsg = if (user.statusReason.isNotBlank()) "\nকারণ: ${user.statusReason}" else ""
+            val reasonMsg = if (existingVerifiedLocalUser.statusReason.isNotBlank()) "\nকারণ: ${existingVerifiedLocalUser.statusReason}" else ""
             db.auditLogDao().insertAuditLog(
                 AuditLog(
-                    userId = user.id,
-                    userName = user.name,
-                    action = "অননুমোদিত প্রবেশের চেষ্টা",
+                    userId = existingVerifiedLocalUser.id,
+                    userName = existingVerifiedLocalUser.name,
+                    action = "অননুমোদিত প্রবেশের চেষ্টা (অফলাইন)",
                     details = "$statusLabel অ্যাকাউন্টে লগইন করার চেষ্টা প্রতিহত করা হয়েছে।$reasonMsg"
                 )
             )
             return AuthResult.Error("আপনার অ্যাকাউন্টটি $statusLabel করা হয়েছে।$reasonMsg\nকর্তৃপক্ষের সাথে যোগাযোগ করুন।")
         }
 
+        // Persist offline session
+        context?.let { ctx ->
+            CloudBusinessAuth.setActiveUserId(ctx, existingVerifiedLocalUser.id)
+            if (existingVerifiedLocalUser.shopId.isNotBlank()) {
+                CloudBusinessAuth.setStoredBusinessId(ctx, existingVerifiedLocalUser.shopId, role = existingVerifiedLocalUser.role.name)
+            }
+        }
+
         db.auditLogDao().insertAuditLog(
             AuditLog(
-                userId = user.id,
-                userName = user.name,
-                action = "লগইন",
-                details = "${user.role} হিসেবে সফল লগইন হয়েছে।"
+                userId = existingVerifiedLocalUser.id,
+                userName = existingVerifiedLocalUser.name,
+                action = "অফলাইন লগইন",
+                details = "${existingVerifiedLocalUser.role} হিসেবে স্থানীয় ডিভাইসে সংরক্ষিত যাচাইকৃত তথ্যের ভিত্তিতে অফলাইন সেশন শুরু হয়েছে।"
             )
         )
-        return AuthResult.Success(user)
+        return AuthResult.Success(existingVerifiedLocalUser)
     }
 
     suspend fun authenticate(phone: String, pin: String): User? {
@@ -343,10 +612,10 @@ class BusinessRepository(
         return if (res is AuthResult.Success) res.user else null
     }
 
-    suspend fun authenticateAdmin(phone: String, pin: String): AuthResult {
-        val res = authenticateUser(phone, pin)
+    suspend fun authenticateAdmin(phone: String, pin: String, targetBusinessId: String? = null): AuthResult {
+        val res = authenticateUser(phone, pin, targetBusinessId)
         if (res is AuthResult.Success) {
-            if (res.user.role != UserRole.ADMIN) {
+            if (res.user.role != UserRole.ADMIN && res.user.role != UserRole.SUPER_ADMIN) {
                 db.auditLogDao().insertAuditLog(
                     AuditLog(
                         userId = res.user.id,
@@ -362,7 +631,15 @@ class BusinessRepository(
     }
 
     suspend fun getUserByPhone(phone: String): User? {
-        val user = db.userDao().getUserByPhone(phone.trim()) ?: return null
+        val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
+        val rawTrimmed = phone.trim()
+        val e164 = CloudBusinessAuth.normalizeToE164(phone)
+        val user = db.userDao().getUserByPhone(rawTrimmed)
+            ?: db.userDao().getUserByPhone(cleanPhone)
+            ?: db.userDao().getUserByPhone(e164)
+            ?: db.userDao().getAllUsersList().firstOrNull { CloudBusinessAuth.matchesPhone(it.phone, cleanPhone) }
+            ?: return null
+
         if (user.id == "admin_1" && user.name != "মোঃ আতাউর রহমান") {
             val updated = user.copy(name = "মোঃ আতাউর রহমান")
             db.userDao().updateUser(updated)
@@ -387,7 +664,7 @@ class BusinessRepository(
         pin: String,
         shopId: String = ""
     ): Result<Pair<User, CompanySettings>> {
-        val cleanPhone = phone.trim()
+        val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
         val cleanShopName = shopName.trim()
         val cleanOwnerName = ownerName.trim()
 

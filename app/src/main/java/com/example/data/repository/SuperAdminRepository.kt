@@ -79,6 +79,45 @@ class SuperAdminRepository(
             return AUTHORIZED_SUPER_ADMIN_PHONES.contains(normalized) || AUTHORIZED_SUPER_ADMIN_PHONES.contains(clean)
         }
 
+        fun deduplicateBusinesses(list: List<PlatformBusiness>): List<PlatformBusiness> {
+            val result = mutableListOf<PlatformBusiness>()
+            for (item in list) {
+                val normPhone = CloudBusinessAuth.normalizePhone(item.ownerPhone)
+                val existingIdx = result.indexOfFirst { existing ->
+                    existing.id == item.id ||
+                    (existing.ownerUid.isNotBlank() && item.ownerUid.isNotBlank() && existing.ownerUid == item.ownerUid) ||
+                    (normPhone.isNotBlank() && CloudBusinessAuth.matchesPhone(existing.ownerPhone, normPhone) &&
+                     (existing.businessName.trim().equals(item.businessName.trim(), ignoreCase = true) ||
+                      existing.ownerName.trim().equals(item.ownerName.trim(), ignoreCase = true))) ||
+                    (existing.ownerEmail.isNotBlank() && item.ownerEmail.isNotBlank() &&
+                     existing.ownerEmail.equals(item.ownerEmail, ignoreCase = true) &&
+                     existing.businessName.trim().equals(item.businessName.trim(), ignoreCase = true))
+                }
+                if (existingIdx >= 0) {
+                    val existing = result[existingIdx]
+                    val isExistingMoreComplete = existing.address.isNotBlank() || existing.phoneVerified
+                    val primary = if (isExistingMoreComplete) existing else item
+                    val secondary = if (isExistingMoreComplete) item else existing
+                    val merged = primary.copy(
+                        businessName = primary.businessName.takeIf { it.isNotBlank() && !it.startsWith("ব্যবসা #") } ?: secondary.businessName,
+                        ownerName = primary.ownerName.takeIf { it.isNotBlank() && it != "অ্যাডমিন" } ?: secondary.ownerName,
+                        ownerEmail = primary.ownerEmail.takeIf { it.isNotBlank() } ?: secondary.ownerEmail,
+                        ownerPhone = normPhone.takeIf { it.isNotBlank() } ?: CloudBusinessAuth.normalizePhone(secondary.ownerPhone),
+                        status = if (primary.status == BusinessAccountStatus.ACTIVE || secondary.status == BusinessAccountStatus.ACTIVE) BusinessAccountStatus.ACTIVE else primary.status,
+                        address = primary.address.takeIf { it.isNotBlank() } ?: secondary.address,
+                        district = primary.district.takeIf { it.isNotBlank() } ?: secondary.district,
+                        phoneVerified = primary.phoneVerified || secondary.phoneVerified,
+                        createdAt = minOf(primary.createdAt, secondary.createdAt),
+                        lastActiveAt = maxOf(primary.lastActiveAt, secondary.lastActiveAt)
+                    )
+                    result[existingIdx] = merged
+                } else {
+                    result.add(item.copy(ownerPhone = normPhone))
+                }
+            }
+            return result
+        }
+
         fun isSuperAdminIdentity(email: String?, phone: String? = null): Boolean {
             if (isRevokedSuperAdminEmail(email)) return false
             return isSuperAdminEmail(email) || isSuperAdminPhone(phone)
@@ -283,7 +322,12 @@ class SuperAdminRepository(
         }
     }
 
-    private fun loadBusinessesLocally(): List<PlatformBusiness> {
+
+
+    fun deduplicateBusinesses(list: List<PlatformBusiness>): List<PlatformBusiness> =
+        Companion.deduplicateBusinesses(list)
+
+    fun loadBusinessesLocally(): List<PlatformBusiness> {
         return try {
             val sp = context.getSharedPreferences("super_admin_businesses_store", Context.MODE_PRIVATE)
             val jsonStr = sp.getString("businesses_json", null) ?: return emptyList()
@@ -293,7 +337,7 @@ class SuperAdminRepository(
                 val obj = arr.getJSONObject(i)
                 result.add(deserializeBusiness(obj))
             }
-            result
+            deduplicateBusinesses(result)
         } catch (e: Exception) {
             Log.w(TAG, "loadBusinessesLocally error: ${e.message}")
             emptyList()
@@ -474,8 +518,14 @@ class SuperAdminRepository(
                 ?: "ব্যবসা #$id"
             val ownerUid = doc.getString("ownerUid") ?: doc.getString("uid") ?: id
             val ownerName = doc.getString("ownerName") ?: doc.getString("name") ?: "অ্যাডমিন"
+            val rawPhone = doc.getString("phone")
+                ?: doc.getString("ownerPhone")
+                ?: doc.getString("phoneNumber")
+                ?: doc.getString("mobile")
+                ?: doc.getString("contactNumber")
+                ?: ""
+            val ownerPhone = CloudBusinessAuth.normalizePhone(rawPhone)
             val ownerEmail = doc.getString("ownerEmail") ?: doc.getString("email") ?: ""
-            val ownerPhone = doc.getString("phone") ?: doc.getString("ownerPhone") ?: ""
             val statusStr = doc.getString("status") ?: "ACTIVE"
             val status = try { BusinessAccountStatus.valueOf(statusStr) } catch (_: Exception) { BusinessAccountStatus.ACTIVE }
             val planId = doc.getString("planId") ?: "plan_free"
@@ -581,26 +631,15 @@ class SuperAdminRepository(
             if (remoteList.isNotEmpty()) {
                 val current = _businesses.value.toMutableList()
                 // Clear initial static mock seeds when authoritative cloud records exist
-                current.removeAll { it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
-                remoteList.forEach { remote ->
-                    val idx = current.indexOfFirst {
-                        it.id == remote.id ||
-                        (it.ownerUid.isNotBlank() && it.ownerUid == remote.ownerUid) ||
-                        (it.ownerPhone.isNotBlank() && it.ownerPhone == remote.ownerPhone)
-                    }
-                    if (idx >= 0) {
-                        current[idx] = remote
-                    } else {
-                        current.add(0, remote)
-                    }
-                }
-                _businesses.value = current
-                saveBusinessesLocally(current)
+                current.removeAll { it.id == "biz_smart_store_1" || it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
+                val merged = deduplicateBusinesses(remoteList + current)
+                _businesses.value = merged
+                saveBusinessesLocally(merged)
                 startRemoteListeners()
-                Result.success(current)
+                Result.success(merged)
             } else {
                 startRemoteListeners()
-                Result.success(_businesses.value)
+                Result.success(deduplicateBusinesses(_businesses.value))
             }
         } catch (e: Exception) {
             Log.w(TAG, "refreshBusinessesFromRemote failed: ${e.message}")
@@ -631,19 +670,10 @@ class SuperAdminRepository(
                     val remoteList = snapshot.documents.mapNotNull { doc -> parseBusinessDoc(doc) }
                     if (remoteList.isNotEmpty()) {
                         val current = _businesses.value.toMutableList()
-                        current.removeAll { it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
-                        remoteList.forEach { remote ->
-                            val idx = current.indexOfFirst {
-                                it.id == remote.id || (it.ownerPhone == remote.ownerPhone && remote.ownerPhone.isNotBlank())
-                            }
-                            if (idx >= 0) {
-                                current[idx] = remote
-                            } else {
-                                current.add(0, remote)
-                            }
-                        }
-                        _businesses.value = current
-                        saveBusinessesLocally(current)
+                        current.removeAll { it.id == "biz_smart_store_1" || it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
+                        val merged = deduplicateBusinesses(remoteList + current)
+                        _businesses.value = merged
+                        saveBusinessesLocally(merged)
                     }
                 }
             }
@@ -1518,7 +1548,7 @@ class SuperAdminRepository(
      * Generates aggregated platform overview metrics.
      */
     fun computeOverviewStats(): PlatformOverviewStats {
-        val bList = _businesses.value
+        val bList = deduplicateBusinesses(_businesses.value)
         val pList = _payments.value
 
         val totalB = bList.size

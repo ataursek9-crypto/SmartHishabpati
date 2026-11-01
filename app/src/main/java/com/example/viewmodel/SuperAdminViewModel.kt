@@ -64,9 +64,14 @@ class SuperAdminViewModel @JvmOverloads constructor(
         repository.computeOverviewStats()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), repository.computeOverviewStats())
 
+    // Deduplicated all businesses stream
+    val allBusinesses: StateFlow<List<PlatformBusiness>> = rawBusinesses
+        .map { list: List<PlatformBusiness> -> SuperAdminRepository.deduplicateBusinesses(list) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SuperAdminRepository.deduplicateBusinesses(rawBusinesses.value))
+
     // Filtered businesses based on search and status filter
     val filteredBusinesses: StateFlow<List<PlatformBusiness>> = combine(
-        rawBusinesses,
+        allBusinesses,
         _uiState
     ) { list, state ->
         val query = state.searchQuery.trim().lowercase()

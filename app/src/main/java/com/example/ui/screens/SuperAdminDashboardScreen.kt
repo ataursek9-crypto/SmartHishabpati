@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -122,6 +123,7 @@ fun SuperAdminDashboardScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val stats by viewModel.overviewStats.collectAsStateWithLifecycle()
     val businesses by viewModel.filteredBusinesses.collectAsStateWithLifecycle()
+    val allBusinesses by viewModel.allBusinesses.collectAsStateWithLifecycle()
     val plans by viewModel.plans.collectAsStateWithLifecycle()
     val payments by viewModel.filteredPayments.collectAsStateWithLifecycle()
     val auditLogs by viewModel.filteredAuditLogs.collectAsStateWithLifecycle()
@@ -452,6 +454,7 @@ fun SuperAdminDashboardScreen(
                     SuperAdminTab.BUSINESSES -> {
                         SuperAdminBusinessesTab(
                             businesses = businesses,
+                            allBusinesses = allBusinesses,
                             searchQuery = uiState.searchQuery,
                             statusFilter = uiState.businessStatusFilter,
                             onSearchChange = { viewModel.updateSearchQuery(it) },
@@ -981,6 +984,7 @@ fun SuperAdminOverviewTab(
 @Composable
 fun SuperAdminBusinessesTab(
     businesses: List<PlatformBusiness>,
+    allBusinesses: List<PlatformBusiness> = businesses,
     searchQuery: String,
     statusFilter: BusinessAccountStatus?,
     onSearchChange: (String) -> Unit,
@@ -1012,17 +1016,21 @@ fun SuperAdminBusinessesTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        val totalCount = allBusinesses.size
+        val pendingCount = allBusinesses.count { it.status == BusinessAccountStatus.PENDING }
+        val activeCount = allBusinesses.count { it.status == BusinessAccountStatus.ACTIVE }
+        val suspendedCount = allBusinesses.count { it.status == BusinessAccountStatus.SUSPENDED }
+
         // Status Filter Chips
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 FilterChip(
                     selected = statusFilter == null,
                     onClick = { onStatusFilterChange(null) },
-                    label = { Text("সকল (${businesses.size})") }
+                    label = { Text("সকল ($totalCount)") }
                 )
             }
             item {
-                val pendingCount = businesses.count { it.status == BusinessAccountStatus.PENDING }
                 FilterChip(
                     selected = statusFilter == BusinessAccountStatus.PENDING,
                     onClick = { onStatusFilterChange(BusinessAccountStatus.PENDING) },
@@ -1037,14 +1045,14 @@ fun SuperAdminBusinessesTab(
                 FilterChip(
                     selected = statusFilter == BusinessAccountStatus.ACTIVE,
                     onClick = { onStatusFilterChange(BusinessAccountStatus.ACTIVE) },
-                    label = { Text("সক্রিয়") }
+                    label = { Text("সক্রিয় ($activeCount)") }
                 )
             }
             item {
                 FilterChip(
                     selected = statusFilter == BusinessAccountStatus.SUSPENDED,
                     onClick = { onStatusFilterChange(BusinessAccountStatus.SUSPENDED) },
-                    label = { Text("স্থগিত") }
+                    label = { Text("স্থগিত ($suspendedCount)") }
                 )
             }
         }
@@ -1057,7 +1065,7 @@ fun SuperAdminBusinessesTab(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(businesses, key = { it.id }) { b ->
+                itemsIndexed(businesses, key = { index, b -> "${b.id}_$index" }) { _, b ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1194,7 +1202,7 @@ fun SuperAdminPlansTab(
             )
         }
 
-        items(plans, key = { it.id }) { p ->
+        itemsIndexed(plans, key = { index, p -> "${p.id}_$index" }) { _, p ->
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
@@ -1310,7 +1318,7 @@ fun SuperAdminPaymentsTab(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(payments, key = { it.id }) { p ->
+                itemsIndexed(payments, key = { index, p -> "${p.id}_$index" }) { _, p ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1399,7 +1407,7 @@ fun SuperAdminAuditLogsTab(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(logs, key = { it.id }) { log ->
+                itemsIndexed(logs, key = { index, log -> "${log.id}_$index" }) { _, log ->
                     Card(shape = RoundedCornerShape(12.dp)) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(

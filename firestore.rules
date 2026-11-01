@@ -65,8 +65,9 @@ service cloud.firestore {
     // Super Admin: Master Email List (Google Verified Identity)
     function isMasterAdminEmail() {
       return isSignedIn() &&
+        ('email' in request.auth.token) &&
         request.auth.token.email != null &&
-        (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com') && (
+        (('email_verified' in request.auth.token && request.auth.token.email_verified == true) || ('firebase' in request.auth.token && 'sign_in_provider' in request.auth.token.firebase && request.auth.token.firebase.sign_in_provider == 'google.com')) && (
           request.auth.token.email in [
             'ataurgonee4@gmail.com',
             'ataursek9@gmail.com'
@@ -82,6 +83,7 @@ service cloud.firestore {
     // Super Admin: Master Phone Number (Phone Auth Verified)
     function isMasterAdminPhone() {
       return isSignedIn() &&
+        ('phone_number' in request.auth.token) &&
         request.auth.token.phone_number != null &&
         request.auth.token.phone_number in ['+8801700000000', '01700000000'];
     }
@@ -252,8 +254,8 @@ service cloud.firestore {
       ));
       allow list: if isSuperAdmin() || (isSignedIn() && (
         resource.data.ownerUid == request.auth.uid ||
-        (request.auth.token.email != null && 'ownerEmail' in resource.data && resource.data.ownerEmail == request.auth.token.email.lower()) ||
-        (request.auth.token.phone_number != null && (
+        ('email' in request.auth.token && request.auth.token.email != null && 'ownerEmail' in resource.data && resource.data.ownerEmail == request.auth.token.email.lower()) ||
+        ('phone_number' in request.auth.token && request.auth.token.phone_number != null && (
           ('ownerPhone' in resource.data && (
             resource.data.ownerPhone == request.auth.token.phone_number ||
             ('+88' + resource.data.ownerPhone) == request.auth.token.phone_number
@@ -367,7 +369,7 @@ service cloud.firestore {
         resource.data.ownerUid == request.auth.uid ||
         resource.data.businessId == request.auth.uid ||
         isBusinessOwner(resource.data.businessId) ||
-        (request.auth.token.phone_number != null && (
+        ('phone_number' in request.auth.token && request.auth.token.phone_number != null && (
           request.auth.token.phone_number == phone ||
           request.auth.token.phone_number == '+88' + phone ||
           ('+88' + phone) == request.auth.token.phone_number
