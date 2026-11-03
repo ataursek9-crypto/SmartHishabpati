@@ -314,6 +314,7 @@ class BusinessRepository(
     sealed class AuthResult {
         data class Success(val user: User) : AuthResult()
         data class RequiresShopSelection(val shops: List<ShopSelectionItem>, val message: String) : AuthResult()
+        data class RequiresPinSetup(val businessId: String, val businessName: String, val phone: String, val message: String) : AuthResult()
         data class Error(val message: String) : AuthResult()
     }
 
@@ -325,7 +326,8 @@ class BusinessRepository(
         val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
         val rawTrimmed = phone.trim()
         val e164 = CloudBusinessAuth.normalizeToE164(phone)
-        val inputHash = hashPin(pin)
+        val cleanPin = pin.trim()
+        val inputHash = hashPin(cleanPin)
 
         // 1. PRIMARY ENTERPRISE ZERO-TRUST FLOW: Firebase Cloud Function Authentication
         // Resolves shop and owner server-side, verifies PIN hash with timing-safe PBKDF2 comparison,
@@ -337,7 +339,7 @@ class BusinessRepository(
             val functions = FirebaseFunctions.getInstance()
             val requestData = hashMapOf<String, Any>(
                 "phone" to cleanPhone,
-                "pinHash" to inputHash
+                "pin" to cleanPin
             )
             if (!targetBusinessId.isNullOrBlank()) {
                 requestData["targetBusinessId"] = targetBusinessId
@@ -350,7 +352,16 @@ class BusinessRepository(
 
             val resultMap = result.data as? Map<*, *>
 
-            // A. Check if server returned Multi-Shop Selection requirement
+            // A. Check if server returned Existing Shop PIN Setup requirement (for shops without Cloud PIN)
+            if (resultMap != null && resultMap["requiresPinSetup"] == true) {
+                val bId = (resultMap["businessId"] as? String)?.trim() ?: ""
+                val bName = (resultMap["businessName"] as? String)?.trim() ?: "আমার দোকান"
+                val oPhone = (resultMap["ownerPhone"] as? String)?.trim() ?: cleanPhone
+                val msg = (resultMap["message"] as? String)?.trim() ?: "দোকানের নিরাপত্তা নিশ্চিত করতে একবারের জন্য ওটিপি যাচাই ও পিন সেটআপ প্রয়োজন।"
+                return AuthResult.RequiresPinSetup(businessId = bId, businessName = bName, phone = oPhone, message = msg)
+            }
+
+            // B. Check if server returned Multi-Shop Selection requirement
             if (resultMap != null && resultMap["requiresShopSelection"] == true) {
                 val rawShops = resultMap["shops"] as? List<*> ?: emptyList<Any>()
                 val shopList = rawShops.mapNotNull { item ->
@@ -628,6 +639,214 @@ class BusinessRepository(
             }
         }
         return res
+    }
+
+    suspend fun setupExistingShopPinWithOtp(
+        businessId: String,
+        phone: String,
+        pin: String,
+        idToken: String
+    ): AuthResult {
+        val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
+        val cleanPin = pin.trim()
+        val cleanBusinessId = businessId.trim()
+
+        try {
+            val functions = FirebaseFunctions.getInstance()
+            val requestData = hashMapOf<String, Any>(
+                "businessId" to cleanBusinessId,
+                "phone" to cleanPhone,
+                "pin" to cleanPin,
+                "idToken" to idToken.trim()
+            )
+
+            Log.d("BusinessRepo", "Calling setupExistingShopPinWithOtp for business: $cleanBusinessId, phone: $cleanPhone")
+            val result = functions.getHttpsCallable("setupExistingShopPinWithOtp")
+                .call(requestData)
+                .await()
+
+            val resultMap = result.data as? Map<*, *>
+            if (resultMap != null && resultMap["success"] == true) {
+                val customToken = resultMap["customToken"] as? String
+                val resBusinessId = (resultMap["businessId"] as? String)?.trim() ?: cleanBusinessId
+                val businessName = (resultMap["businessName"] as? String)?.trim() ?: "আমার দোকান"
+                val ownerUid = (resultMap["ownerUid"] as? String)?.trim() ?: "owner_$resBusinessId"
+                val ownerName = (resultMap["ownerName"] as? String)?.trim() ?: "অ্যাডমিন"
+                val roleStr = (resultMap["role"] as? String)?.trim() ?: "ADMIN"
+                val role = if (roleStr.equals("SALESMAN", ignoreCase = true)) UserRole.SALESMAN else UserRole.ADMIN
+
+                if (customToken.isNullOrBlank()) {
+                    return AuthResult.Error("নিরাপত্তা ত্রুটি: সার্ভার থেকে কাস্টম টোকেন পাওয়া যায়নি!")
+                }
+
+                // Authenticate with Firebase Custom Token
+                val authResult = try {
+                    FirebaseAuth.getInstance().signInWithCustomToken(customToken).await()
+                } catch (authEx: Exception) {
+                    Log.e("BusinessRepo", "Firebase Custom Token authentication failed on PIN setup", authEx)
+                    return AuthResult.Error("Firebase প্রমাণীকরণ ব্যর্থ হয়েছে: ${authEx.localizedMessage ?: "টোকেন ত্রুটি"}")
+                }
+
+                val authenticatedFirebaseUser = authResult.user
+                    ?: return AuthResult.Error("নিরাপত্তা ত্রুটি: Firebase Auth ইউজার সেশন তৈরি করা যায়নি!")
+
+                // Auto-provision fresh Room user
+                val inputHash = hashPin(cleanPin)
+                val provisionedUser = User(
+                    id = ownerUid,
+                    name = ownerName,
+                    phone = cleanPhone,
+                    role = role,
+                    pinHash = inputHash,
+                    isActive = true,
+                    accountStatus = UserAccountStatus.ACTIVE,
+                    shopId = resBusinessId
+                )
+                db.userDao().insertUser(provisionedUser)
+
+                // Update CompanySettings locally
+                val existingSettings = db.companySettingsDao().getSettings()
+                val newSettings = (existingSettings ?: CompanySettings(id = 1)).copy(
+                    businessName = businessName,
+                    phone = cleanPhone
+                )
+                db.companySettingsDao().insertOrUpdate(newSettings)
+
+                // Persist session
+                context?.let { ctx ->
+                    CloudBusinessAuth.setActiveUserId(ctx, provisionedUser.id)
+                    CloudBusinessAuth.setStoredBusinessId(ctx, resBusinessId, businessName, role.name)
+                }
+
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        userId = provisionedUser.id,
+                        userName = provisionedUser.name,
+                        action = "পিন সেটআপ ও লগইন (Cloud Verified)",
+                        details = "ওটিপি যাচাইয়ের মাধ্যমে দোকানের নতুন পিন সফলভাবে সংরক্ষিত হয়েছে।"
+                    )
+                )
+
+                return AuthResult.Success(provisionedUser)
+            } else {
+                val errMsg = resultMap?.get("message") as? String ?: "পিন সেটআপ ব্যর্থ হয়েছে!"
+                return AuthResult.Error(errMsg)
+            }
+        } catch (fnEx: FirebaseFunctionsException) {
+            Log.e("BusinessRepo", "setupExistingShopPinWithOtp exception: ${fnEx.message}", fnEx)
+            return AuthResult.Error(fnEx.message ?: "পিন সেটআপ ব্যর্থ হয়েছে!")
+        } catch (e: Exception) {
+            Log.e("BusinessRepo", "setupExistingShopPinWithOtp error: ${e.message}", e)
+            return AuthResult.Error("পিন সেটআপে ত্রুটি: ${e.localizedMessage ?: "সার্ভার সংযোগ ব্যর্থ"}")
+        }
+    }
+
+    suspend fun registerShopViaCloud(
+        shopName: String,
+        ownerName: String,
+        phone: String,
+        pin: String,
+        address: String,
+        district: String,
+        businessType: String,
+        idToken: String
+    ): AuthResult {
+        val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
+        val cleanPin = pin.trim()
+
+        try {
+            val functions = FirebaseFunctions.getInstance()
+            val requestData = hashMapOf<String, Any>(
+                "shopName" to shopName.trim(),
+                "ownerName" to ownerName.trim(),
+                "phone" to cleanPhone,
+                "pin" to cleanPin,
+                "address" to address.trim(),
+                "district" to district.trim(),
+                "businessType" to businessType.trim(),
+                "idToken" to idToken.trim()
+            )
+
+            Log.d("BusinessRepo", "Calling registerPhoneShopWithCustomToken for phone: $cleanPhone")
+            val result = functions.getHttpsCallable("registerPhoneShopWithCustomToken")
+                .call(requestData)
+                .await()
+
+            val resultMap = result.data as? Map<*, *>
+            if (resultMap != null && resultMap["success"] == true) {
+                val customToken = resultMap["customToken"] as? String
+                val resBusinessId = (resultMap["businessId"] as? String)?.trim() ?: ""
+                val resBusinessName = (resultMap["businessName"] as? String)?.trim() ?: shopName.trim()
+                val ownerUid = (resultMap["ownerUid"] as? String)?.trim() ?: "owner_$resBusinessId"
+                val resOwnerName = (resultMap["ownerName"] as? String)?.trim() ?: ownerName.trim()
+                val roleStr = (resultMap["role"] as? String)?.trim() ?: "ADMIN"
+                val role = if (roleStr.equals("SALESMAN", ignoreCase = true)) UserRole.SALESMAN else UserRole.ADMIN
+
+                if (customToken.isNullOrBlank()) {
+                    return AuthResult.Error("নিরাপত্তা ত্রুটি: সার্ভার থেকে রেজিস্ট্রেশন টোকেন পাওয়া যায়নি!")
+                }
+
+                // Sign in with Custom Token
+                val authResult = try {
+                    FirebaseAuth.getInstance().signInWithCustomToken(customToken).await()
+                } catch (authEx: Exception) {
+                    Log.e("BusinessRepo", "Firebase Custom Token authentication failed on registration", authEx)
+                    return AuthResult.Error("Firebase প্রমাণীকরণ ব্যর্থ হয়েছে: ${authEx.localizedMessage ?: "টোকেন ত্রুটি"}")
+                }
+
+                val authenticatedFirebaseUser = authResult.user
+                    ?: return AuthResult.Error("নিরাপত্তা ত্রুটি: Firebase Auth ইউজার সেশন তৈরি করা যায়নি!")
+
+                // Auto-provision fresh Room user
+                val inputHash = hashPin(cleanPin)
+                val provisionedUser = User(
+                    id = ownerUid,
+                    name = resOwnerName,
+                    phone = cleanPhone,
+                    role = role,
+                    pinHash = inputHash,
+                    isActive = true,
+                    accountStatus = UserAccountStatus.ACTIVE,
+                    shopId = resBusinessId
+                )
+                db.userDao().insertUser(provisionedUser)
+
+                // Provision CompanySettings
+                val existingSettings = db.companySettingsDao().getSettings()
+                val newSettings = (existingSettings ?: CompanySettings(id = 1)).copy(
+                    businessName = resBusinessName,
+                    phone = cleanPhone,
+                    address = address.trim()
+                )
+                db.companySettingsDao().insertOrUpdate(newSettings)
+
+                // Persist session
+                context?.let { ctx ->
+                    CloudBusinessAuth.setActiveUserId(ctx, provisionedUser.id)
+                    CloudBusinessAuth.setStoredBusinessId(ctx, resBusinessId, resBusinessName, role.name)
+                }
+
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        userId = provisionedUser.id,
+                        userName = provisionedUser.name,
+                        action = "দোকান নিবন্ধন ও লগইন (Cloud Function Verified)",
+                        details = "নতুন দোকান সফলভাবে নিবন্ধিত হয়েছে।"
+                    )
+                )
+
+                return AuthResult.Success(provisionedUser)
+            } else {
+                val errMsg = resultMap?.get("message") as? String ?: "রেজিস্ট্রেশন ব্যর্থ হয়েছে!"
+                return AuthResult.Error(errMsg)
+            }
+        } catch (fnEx: FirebaseFunctionsException) {
+            Log.e("BusinessRepo", "registerPhoneShopWithCustomToken exception: ${fnEx.message}", fnEx)
+            return AuthResult.Error(fnEx.message ?: "দোকান নিবন্ধন ব্যর্থ হয়েছে!")
+        } catch (e: Exception) {
+            Log.e("BusinessRepo", "registerPhoneShopWithCustomToken error: ${e.message}", e)
+            return AuthResult.Error("নিবন্ধনে ত্রুটি: ${e.localizedMessage ?: "সার্ভার সংযোগ ব্যর্থ"}")
+        }
     }
 
     suspend fun getUserByPhone(phone: String): User? {

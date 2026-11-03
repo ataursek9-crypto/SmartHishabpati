@@ -47,7 +47,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.ui.theme.*
 import com.example.util.GoogleSignInHelper
+import com.example.util.PhoneAuthHelper
 import com.example.viewmodel.BusinessViewModel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * SmartHishabpati LoginScreen
@@ -93,6 +96,17 @@ fun LoginScreen(
     // Dialogs
     var showForgotPinDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+
+    // Existing Shop PIN Setup via OTP State
+    val pendingPinSetup by viewModel.pendingPinSetup.collectAsStateWithLifecycle()
+    var otpVerificationId by remember { mutableStateOf("") }
+    var otpCodeInput by remember { mutableStateOf("") }
+    var newPinInput by remember { mutableStateOf("") }
+    var confirmNewPinInput by remember { mutableStateOf("") }
+    var isSendingOtp by remember { mutableStateOf(false) }
+    var isVerifyingOtpAndPin by remember { mutableStateOf(false) }
+    var pinSetupErrorMessage by remember { mutableStateOf("") }
+    var otpSentSuccess by remember { mutableStateOf(false) }
 
     // Auto-fill phone from last remembered account if empty
     LaunchedEffect(savedAccounts) {
@@ -710,6 +724,262 @@ fun LoginScreen(
                 Box(modifier = Modifier.width(40.dp).height(1.dp).background(Color(0xFFCBD5E1)))
             }
         }
+    }
+
+    // --- Existing Shop PIN Setup via OTP Dialog ---
+    if (pendingPinSetup != null) {
+        val setupInfo = pendingPinSetup!!
+        AlertDialog(
+            onDismissRequest = {
+                if (!isVerifyingOtpAndPin && !isSendingOtp) {
+                    viewModel.clearPendingPinSetup()
+                    otpVerificationId = ""
+                    otpCodeInput = ""
+                    newPinInput = ""
+                    confirmNewPinInput = ""
+                    pinSetupErrorMessage = ""
+                    otpSentSuccess = false
+                }
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "PIN Setup",
+                        tint = HishabpatiPurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "দোকানের নিরাপত্তা ও পিন সেটআপ",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = HishabpatiPurple
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E8FF)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "প্রতিষ্ঠান: ${setupInfo.businessName}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = HishabpatiPurple
+                            )
+                            Text(
+                                text = "মোবাইল: ${setupInfo.phone}",
+                                fontSize = 13.sp,
+                                color = Color(0xFF4B5563)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "ক্লাউড সিকিউরিটি আপগ্রেডের কারণে আপনার অ্যাকাউন্টে প্রথমবার পিন সেটআপ করা প্রয়োজন। মালিকানা নিশ্চিত করতে নিচের নম্বরে পাঠানো ৬ সংখ্যার ওটিপি কোড এবং আপনার পছন্দের নতুন ৪-সংখ্যার পিন প্রদান করুন।",
+                        fontSize = 12.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 17.sp
+                    )
+
+                    // Button to send OTP
+                    OutlinedButton(
+                        onClick = {
+                            val activity = context as? android.app.Activity
+                            if (activity != null) {
+                                isSendingOtp = true
+                                pinSetupErrorMessage = ""
+                                PhoneAuthHelper.sendVerificationCode(
+                                    activity = activity,
+                                    phone = setupInfo.phone,
+                                    onCodeSent = { vId, _ ->
+                                        isSendingOtp = false
+                                        otpVerificationId = vId
+                                        otpSentSuccess = true
+                                    },
+                                    onAutoVerified = { fUser ->
+                                        isSendingOtp = false
+                                        coroutineScope.launch {
+                                            val token = try { fUser.getIdToken(false).await().token ?: "" } catch (_: Exception) { "" }
+                                            if (token.isNotBlank() && newPinInput.length in 4..6 && newPinInput == confirmNewPinInput) {
+                                                viewModel.setupExistingShopPin(
+                                                    businessId = setupInfo.businessId,
+                                                    phone = setupInfo.phone,
+                                                    newPin = newPinInput,
+                                                    idToken = token
+                                                ) { success, msg ->
+                                                    if (success) {
+                                                        onLoginSuccess()
+                                                    } else {
+                                                        pinSetupErrorMessage = msg
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onError = { err ->
+                                        isSendingOtp = false
+                                        pinSetupErrorMessage = err
+                                    }
+                                )
+                            } else {
+                                pinSetupErrorMessage = "সিস্টেম এরর: অ্যাক্টিভিটি পাওয়া যায়নি!"
+                            }
+                        },
+                        enabled = !isSendingOtp && !isVerifyingOtpAndPin,
+                        modifier = Modifier.fillMaxWidth().testTag("send_otp_setup_button"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = HishabpatiPurple)
+                    ) {
+                        if (isSendingOtp) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = HishabpatiPurple)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("ওটিপি পাঠানো হচ্ছে...", fontSize = 13.sp)
+                        } else {
+                            Icon(imageVector = Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (otpSentSuccess) "পুনরায় ওটিপি পাঠান" else "ফোনে ওটিপি কোড পাঠান", fontSize = 13.sp)
+                        }
+                    }
+
+                    if (otpSentSuccess) {
+                        Text(
+                            text = "আপনার মোবাইলে ৬ সংখ্যার ওটিপি কোড পাঠানো হয়েছে।",
+                            fontSize = 11.sp,
+                            color = Color(0xFF16A34A),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    // OTP Input Field
+                    OutlinedTextField(
+                        value = otpCodeInput,
+                        onValueChange = { if (it.length <= 6) otpCodeInput = it.filter { char -> char.isDigit() } },
+                        label = { Text("৬ সংখ্যার ওটিপি কোড", fontSize = 12.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("otp_code_setup_input")
+                    )
+
+                    // New PIN Input Field
+                    OutlinedTextField(
+                        value = newPinInput,
+                        onValueChange = { if (it.length <= 6) newPinInput = it.filter { char -> char.isDigit() } },
+                        label = { Text("নতুন ৪-৬ সংখ্যার পিন", fontSize = 12.sp) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("new_pin_setup_input")
+                    )
+
+                    // Confirm New PIN Input Field
+                    OutlinedTextField(
+                        value = confirmNewPinInput,
+                        onValueChange = { if (it.length <= 6) confirmNewPinInput = it.filter { char -> char.isDigit() } },
+                        label = { Text("নতুন পিন পুনরায় লিখুন", fontSize = 12.sp) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("confirm_new_pin_setup_input")
+                    )
+
+                    if (pinSetupErrorMessage.isNotBlank()) {
+                        Text(
+                            text = pinSetupErrorMessage,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleanOtp = otpCodeInput.trim()
+                        val cleanPin = newPinInput.trim()
+                        val cleanConfirm = confirmNewPinInput.trim()
+
+                        if (otpVerificationId.isBlank()) {
+                            pinSetupErrorMessage = "প্রথমে 'ফোনে ওটিপি কোড পাঠান' বাটনে চাপ দিন।"
+                        } else if (cleanOtp.length != 6) {
+                            pinSetupErrorMessage = "সঠিক ৬ সংখ্যার ওটিপি কোড লিখুন।"
+                        } else if (cleanPin.length < 4 || cleanPin.length > 6) {
+                            pinSetupErrorMessage = "নতুন পিন কোড ৪ থেকে ৬ সংখ্যার হতে হবে।"
+                        } else if (cleanPin != cleanConfirm) {
+                            pinSetupErrorMessage = "উভয় পিন কোড মিলছে না!"
+                        } else {
+                            isVerifyingOtpAndPin = true
+                            pinSetupErrorMessage = ""
+                            PhoneAuthHelper.verifyCodeAndSignIn(
+                                verificationId = otpVerificationId,
+                                code = cleanOtp,
+                                onSuccess = { fUser ->
+                                    coroutineScope.launch {
+                                        val token = try { fUser.getIdToken(false).await().token ?: "" } catch (_: Exception) { "" }
+                                        if (token.isBlank()) {
+                                            isVerifyingOtpAndPin = false
+                                            pinSetupErrorMessage = "ওটিপি প্রমাণীকরণ টোকেন সংগ্রহ ব্যর্থ হয়েছে।"
+                                            return@launch
+                                        }
+                                        viewModel.setupExistingShopPin(
+                                            businessId = setupInfo.businessId,
+                                            phone = setupInfo.phone,
+                                            newPin = cleanPin,
+                                            idToken = token
+                                        ) { success, msg ->
+                                            isVerifyingOtpAndPin = false
+                                            if (success) {
+                                                onLoginSuccess()
+                                            } else {
+                                                pinSetupErrorMessage = msg
+                                            }
+                                        }
+                                    }
+                                },
+                                onError = { err ->
+                                    isVerifyingOtpAndPin = false
+                                    pinSetupErrorMessage = err
+                                }
+                            )
+                        }
+                    },
+                    enabled = !isVerifyingOtpAndPin,
+                    colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                    modifier = Modifier.testTag("submit_pin_setup_button")
+                ) {
+                    if (isVerifyingOtpAndPin) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("নিশ্চিত করুন ও লগইন", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        if (!isVerifyingOtpAndPin && !isSendingOtp) {
+                            viewModel.clearPendingPinSetup()
+                            otpVerificationId = ""
+                            otpCodeInput = ""
+                            newPinInput = ""
+                            confirmNewPinInput = ""
+                            pinSetupErrorMessage = ""
+                            otpSentSuccess = false
+                        }
+                    },
+                    enabled = !isVerifyingOtpAndPin
+                ) {
+                    Text("বাতিল", color = Color(0xFF64748B))
+                }
+            }
+        )
     }
 
     // --- Forgot PIN Dialog ---

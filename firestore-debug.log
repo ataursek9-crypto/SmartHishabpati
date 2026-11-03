@@ -1,4 +1,4 @@
-Nov 03, 2026 4:23:00 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
+Nov 03, 2026 9:09:50 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
 INFO: Started WebSocket server on ws://127.0.0.1:9150
 
 API endpoint: http://127.0.0.1:8085
@@ -16,21 +16,21 @@ If you are running a Firestore in Datastore Mode project, run:
 Note: Support for Datastore Mode is in preview. If you encounter any bugs please file at https://github.com/firebase/firebase-tools/issues.
 Dev App Server is now running.
 
-Nov 03, 2026 4:23:01 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 03, 2026 9:09:50 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected non-HTTP/2 connection.
-Nov 03, 2026 4:23:02 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 03, 2026 9:09:50 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:06 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 03, 2026 9:09:52 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected non-HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:06 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 03, 2026 9:09:52 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:06 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
+Nov 03, 2026 9:09:52 AM io.gapi.emulators.netty.HttpVersionRoutingHandler channelRead
 INFO: Detected HTTP/2 connection.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
@@ -60,7 +60,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:08 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'delete' @ L7, evaluation error at L407:24 for 'delete' @ L407, false for 'delete' @ L7, false for 'delete' @ L407
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -93,7 +93,7 @@ false for 'delete' @ L7, evaluation error at L407:24 for 'delete' @ L407, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:08 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'update' @ L7, evaluation error at L400:32 for 'update' @ L400, false for 'update' @ L7, false for 'update' @ L400
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -136,7 +136,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:09 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L431:24 for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -169,7 +169,7 @@ false for 'create' @ L7, evaluation error at L431:24 for 'create' @ L431, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:09 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -202,7 +202,7 @@ false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, eva
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:09 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, false for 'create' @ L431, false for 'update' @ L7, evaluation error at L437:32 for 'update' @ L437, false for 'create' @ L7, false for 'create' @ L431
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -239,7 +239,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:09 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'create' @ L7, false for 'create' @ L269
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -272,7 +272,7 @@ false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false 
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:09 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'create' @ L7, evaluation error at L269:24 for 'create' @ L269, false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'create' @ L7, false for 'create' @ L269
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -331,7 +331,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:53 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: 
 false for 'update' @ L7, evaluation error at L280:24 for 'update' @ L280, false for 'update' @ L7, false for 'update' @ L280
 com.google.cloud.datastore.core.exception.DatastoreException: 
@@ -412,7 +412,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -445,7 +445,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -478,7 +478,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -511,7 +511,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -544,7 +544,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -577,7 +577,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -610,7 +610,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -643,7 +643,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -676,7 +676,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -709,7 +709,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -742,7 +742,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -775,7 +775,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -808,7 +808,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -841,7 +841,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -874,7 +874,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -907,7 +907,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -940,7 +940,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -973,7 +973,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1006,7 +1006,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:10 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:54 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01719140500]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1167,7 +1167,7 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1200,7 +1200,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1233,7 +1233,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1266,7 +1266,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1299,7 +1299,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1332,7 +1332,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1365,7 +1365,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1398,7 +1398,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1431,7 +1431,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1464,7 +1464,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1497,7 +1497,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1530,7 +1530,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1563,7 +1563,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1596,7 +1596,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1629,7 +1629,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1662,7 +1662,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1695,7 +1695,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1728,7 +1728,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1761,7 +1761,7 @@ com.google.cloud.datastore.core.exception.DatastoreException: entity already exi
 
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:12 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
+Nov 03, 2026 9:09:55 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
 WARNING: Operation failed: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 com.google.cloud.datastore.core.exception.DatastoreException: entity already exists: EntityRef[partitionRef=dev~demo-smartbiz, path=/auth_rate_limits/01799887766]
 	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
@@ -1802,41 +1802,6 @@ Multiple projectIds are not recommended in single project mode. Requested projec
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
-Nov 03, 2026 4:23:13 AM com.google.cloud.datastore.emulator.impl.util.WrappedStreamObserver onError
-WARNING: Operation failed: the stored version (1793679793114299) does not match the required base version (1793679793039465)
-com.google.cloud.datastore.core.exception.DatastoreException: the stored version (1793679793114299) does not match the required base version (1793679793039465)
-	at com.google.cloud.datastore.core.exception.DatastoreException.withProblem(DatastoreException.java:352)
-	at com.google.cloud.datastore.core.exception.DatastoreException.withProblemCode(DatastoreException.java:340)
-	at com.google.cloud.datastore.emulator.impl.util.FirestoreEmulatorConverters.checkMutation(FirestoreEmulatorConverters.java:192)
-	at com.google.cloud.datastore.emulator.impl.firestore.FirestoreEmulatorHelper.commitHelper(FirestoreEmulatorHelper.java:412)
-	at com.google.cloud.datastore.emulator.impl.firestore.FirestoreEmulatorHelper.internalCommit(FirestoreEmulatorHelper.java:348)
-	at com.google.cloud.datastore.emulator.impl.firestore.CloudFirestoreV1.commit(CloudFirestoreV1.java:541)
-	at com.google.cloud.datastore.emulator.impl.firestore.CloudFirestoreV1Router.commit(CloudFirestoreV1Router.java:177)
-	at com.google.cloud.datastore.emulator.firestore.v1.FirestoreV1GrpcAdapter$1.lambda$commit$0(FirestoreV1GrpcAdapter.java:162)
-	at com.google.cloud.datastore.emulator.firestore.v1.FirestoreV1GrpcAdapter.unary(FirestoreV1GrpcAdapter.java:72)
-	at com.google.cloud.datastore.emulator.firestore.v1.FirestoreV1GrpcAdapter$1.commit(FirestoreV1GrpcAdapter.java:162)
-	at com.google.firestore.v1.FirestoreGrpc$MethodHandlers.invoke(FirestoreGrpc.java:1404)
-	at io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
-	at io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at io.grpc.Contexts$ContextualizedServerCallListener.onHalfClose(Contexts.java:86)
-	at io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at io.grpc.Contexts$ContextualizedServerCallListener.onHalfClose(Contexts.java:86)
-	at io.grpc.internal.ServerCallImpl$ServerStreamListenerImpl.halfClosed(ServerCallImpl.java:356)
-	at io.grpc.internal.ServerImpl$JumpToApplicationThreadServerStreamListener$1HalfClosed.runInContext(ServerImpl.java:879)
-	at io.grpc.internal.ContextRunnable.run(ContextRunnable.java:37)
-	at io.grpc.internal.SerializingExecutor.run(SerializingExecutor.java:133)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
-	at java.base/java.lang.Thread.run(Thread.java:1583)
-
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.
 Multiple projectIds are not recommended in single project mode. Requested project ID demo-smartbiz, but the emulator is configured for demo-no-project. To opt-out of single project mode add/set the '"singleProjectMode": false' property in the firebase.json emulators config.

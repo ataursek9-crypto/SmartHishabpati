@@ -47,6 +47,14 @@ data class CustomerDueItem(
     val totalTransactionsCount: Int = 0
 )
 
+// Pending PIN Setup info for existing shops requiring initial PIN setup via OTP
+data class PendingPinSetupInfo(
+    val businessId: String,
+    val businessName: String,
+    val phone: String,
+    val message: String
+)
+
 // Sanitized stock view for Salesman (purchase price hidden)
 data class SalesmanProductView(
     val id: String,
@@ -360,6 +368,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     // Active User State
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
+
+    // Existing Shop PIN Setup requirement state
+    private val _pendingPinSetup = MutableStateFlow<PendingPinSetupInfo?>(null)
+    val pendingPinSetup: StateFlow<PendingPinSetupInfo?> = _pendingPinSetup.asStateFlow()
 
     // App Lock PIN Verification state
     private val _isUnlocked = MutableStateFlow(true)
@@ -989,7 +1001,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardSummary())
 
-    // Standard Authentication (Sales representatives & staff)
+    // Unified Authentication (Admin & Sales representatives & staff)
     fun login(phone: String, pin: String, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             if (phone.isBlank() || pin.isBlank()) {
@@ -998,45 +1010,112 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             }
             when (val auth = repository.authenticateUser(phone, pin)) {
                 is BusinessRepository.AuthResult.Success -> {
-                    if (auth.user.role == UserRole.ADMIN) {
-                        _currentUser.value = null
-                        onResult(false, "অননুমোদিত অ্যাকাউন্ট! এটি সাধারণ বিক্রয় কর্মীদের লগইন স্ক্রিন।")
-                    } else {
-                        _currentUser.value = auth.user
-                        _isSuperAdminSession.value = false
-                        _superAdminVerifiedEmail.value = null
-                        _superAdminUid.value = null
-                        _currentGoogleEmail.value = null
-                        CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
-                        CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
-                        CloudBusinessAuth.setStoredRole(getApplication(), auth.user.role.name)
-                        CloudBusinessAuth.setActiveUserId(getApplication(), auth.user.id)
-                        val existingBizId = CloudBusinessAuth.getStoredBusinessId(getApplication()) ?: ""
-                        val bizId = when {
-                            auth.user.shopId.isNotBlank() -> auth.user.shopId
-                            existingBizId.isNotBlank() && existingBizId != "admin_1" && existingBizId != "salesman_1" -> existingBizId
-                            else -> "biz_smart_store_1"
-                        }
-                        CloudBusinessAuth.setStoredBusinessId(
-                            context = getApplication(),
-                            businessId = bizId,
-                            role = auth.user.role.name
-                        )
-                        _activeBusinessId.value = bizId
-                        val fUid = try { FirebaseAuth.getInstance().currentUser?.uid } catch (_: Exception) { null }
-                        if (fUid != null && bizId.isNotBlank()) {
-                            syncManager.ensureStaffLinked(bizId, fUid, auth.user.phone, auth.user.name, auth.user.role.name)
-                        }
-                        syncManager.startProductsRealtimeListener()
-                        triggerSync()
-                        onResult(true, "স্বাগতম, ${auth.user.name}!")
+                    _currentUser.value = auth.user
+                    _isSuperAdminSession.value = false
+                    _superAdminVerifiedEmail.value = null
+                    _superAdminUid.value = null
+                    _currentGoogleEmail.value = null
+                    CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
+                    CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
+                    CloudBusinessAuth.setStoredRole(getApplication(), auth.user.role.name)
+                    CloudBusinessAuth.setActiveUserId(getApplication(), auth.user.id)
+                    val existingBizId = CloudBusinessAuth.getStoredBusinessId(getApplication()) ?: ""
+                    val bizId = when {
+                        auth.user.shopId.isNotBlank() -> auth.user.shopId
+                        existingBizId.isNotBlank() && existingBizId != "admin_1" && existingBizId != "salesman_1" -> existingBizId
+                        else -> "biz_smart_store_1"
                     }
+                    CloudBusinessAuth.setStoredBusinessId(
+                        context = getApplication(),
+                        businessId = bizId,
+                        role = auth.user.role.name
+                    )
+                    _activeBusinessId.value = bizId
+                    val fUid = try { FirebaseAuth.getInstance().currentUser?.uid } catch (_: Exception) { null }
+                    if (fUid != null && bizId.isNotBlank()) {
+                        if (auth.user.role == UserRole.ADMIN) {
+                            syncManager.ensureBusinessDocExists(bizId, fUid)
+                        }
+                        syncManager.ensureStaffLinked(bizId, fUid, auth.user.phone, auth.user.name, auth.user.role.name)
+                    }
+                    syncManager.startProductsRealtimeListener()
+                    triggerSync()
+                    val welcomeMsg = if (auth.user.role == UserRole.ADMIN) {
+                        "এডমিন প্যানেলে স্বাগতম, ${auth.user.name}!"
+                    } else {
+                        "স্বাগতম, ${auth.user.name}!"
+                    }
+                    onResult(true, welcomeMsg)
+                }
+                is BusinessRepository.AuthResult.RequiresPinSetup -> {
+                    _pendingPinSetup.value = PendingPinSetupInfo(
+                        businessId = auth.businessId,
+                        businessName = auth.businessName,
+                        phone = auth.phone,
+                        message = auth.message
+                    )
+                    onResult(false, auth.message)
                 }
                 is BusinessRepository.AuthResult.RequiresShopSelection -> {
                     onResult(false, auth.message)
                 }
                 is BusinessRepository.AuthResult.Error -> {
                     onResult(false, auth.message)
+                }
+            }
+        }
+    }
+
+    fun clearPendingPinSetup() {
+        _pendingPinSetup.value = null
+    }
+
+    fun setupExistingShopPin(
+        businessId: String,
+        phone: String,
+        newPin: String,
+        idToken: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanPin = newPin.trim()
+            if (cleanPin.length < 4 || cleanPin.length > 6) {
+                onResult(false, "পিন কোড অবশ্যই ৪ থেকে ৬ সংখ্যার হতে হবে!")
+                return@launch
+            }
+            when (val auth = repository.setupExistingShopPinWithOtp(businessId, phone, cleanPin, idToken)) {
+                is BusinessRepository.AuthResult.Success -> {
+                    _currentUser.value = auth.user
+                    _isSuperAdminSession.value = false
+                    _superAdminVerifiedEmail.value = null
+                    _superAdminUid.value = null
+                    _currentGoogleEmail.value = null
+                    CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
+                    CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
+                    CloudBusinessAuth.setStoredRole(getApplication(), auth.user.role.name)
+                    CloudBusinessAuth.setActiveUserId(getApplication(), auth.user.id)
+                    val bizId = auth.user.shopId
+                    CloudBusinessAuth.setStoredBusinessId(
+                        context = getApplication(),
+                        businessId = bizId,
+                        role = auth.user.role.name
+                    )
+                    _activeBusinessId.value = bizId
+                    _pendingPinSetup.value = null
+                    val fUid = try { FirebaseAuth.getInstance().currentUser?.uid } catch (_: Exception) { null }
+                    if (fUid != null && bizId.isNotBlank()) {
+                        syncManager.ensureBusinessDocExists(bizId, fUid)
+                        syncManager.ensureStaffLinked(bizId, fUid, auth.user.phone, auth.user.name, auth.user.role.name)
+                    }
+                    syncManager.startProductsRealtimeListener()
+                    triggerSync()
+                    onResult(true, "পিন সফলভাবে সেট করা হয়েছে। এডমিন প্যানেলে স্বাগতম, ${auth.user.name}!")
+                }
+                is BusinessRepository.AuthResult.Error -> {
+                    onResult(false, auth.message)
+                }
+                else -> {
+                    onResult(false, "পিন সেটআপ সম্পন্ন করা সম্ভব হয়নি!")
                 }
             }
         }
@@ -1086,6 +1165,16 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 }
                 is BusinessRepository.AuthResult.RequiresShopSelection -> {
                     _currentUser.value = null
+                    onResult(false, auth.message)
+                }
+                is BusinessRepository.AuthResult.RequiresPinSetup -> {
+                    _currentUser.value = null
+                    _pendingPinSetup.value = PendingPinSetupInfo(
+                        businessId = auth.businessId,
+                        businessName = auth.businessName,
+                        phone = auth.phone,
+                        message = auth.message
+                    )
                     onResult(false, auth.message)
                 }
                 is BusinessRepository.AuthResult.Error -> {
@@ -1212,34 +1301,74 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     notes = "নতুন দোকানদার স্ব-নিবন্ধন (সুপার এডমিন অনুমোদনের অপেক্ষায়)"
                 )
 
-                // 1. Register with SuperAdminRepository (and Cloud Firestore when configured).
-                // Cloud registration must succeed before Room persistence to prevent orphaned local accounts.
-                val cloudResult = superAdminRepo.registerNewShop(platformBiz)
-                if (cloudResult.isFailure) {
-                    val err = cloudResult.exceptionOrNull()
-                    val errorMsg = "সার্ভারে দোকান সংরক্ষণ ব্যর্থ হয়েছে! অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন (${err?.localizedMessage ?: "ক্লাউড সংরক্ষণ ত্রুটি"})"
-                    onResult(false, errorMsg, null)
-                    return@launch
+                // 1. Enterprise Cloud Function Registration (when Phone Auth is verified)
+                var cloudFunctionSucceeded = false
+                if (superAdminRepo.isFirebaseConfigured()) {
+                    val idToken = try {
+                        currentAuth?.getIdToken(false)?.await()?.token ?: ""
+                    } catch (_: Exception) { "" }
+
+                    if (idToken.isNotBlank()) {
+                        when (val cloudRes = repository.registerShopViaCloud(
+                            shopName = shopName,
+                            ownerName = ownerName,
+                            phone = normalizedPhone,
+                            pin = normalizedPin,
+                            address = address,
+                            district = district,
+                            businessType = businessType,
+                            idToken = idToken
+                        )) {
+                            is BusinessRepository.AuthResult.Success -> {
+                                cloudFunctionSucceeded = true
+                            }
+                            is BusinessRepository.AuthResult.Error -> {
+                                onResult(false, cloudRes.message, null)
+                                return@launch
+                            }
+                            else -> {}
+                        }
+                    }
                 }
 
-                // 2. Now persist safely to local Room database
-                val repoResult = repository.registerNewShop(
-                    shopName = shopName,
-                    ownerName = ownerName,
+                // 2. Direct Firestore fallback if Cloud Function was not invoked (e.g. offline/direct Google link)
+                if (!cloudFunctionSucceeded) {
+                    val cloudResult = superAdminRepo.registerNewShop(platformBiz)
+                    if (cloudResult.isFailure) {
+                        val err = cloudResult.exceptionOrNull()
+                        val errorMsg = "সার্ভারে দোকান সংরক্ষণ ব্যর্থ হয়েছে! অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন (${err?.localizedMessage ?: "ক্লাউড সংরক্ষণ ত্রুটি"})"
+                        onResult(false, errorMsg, null)
+                        return@launch
+                    }
+
+                    // Now persist safely to local Room database
+                    val repoResult = repository.registerNewShop(
+                        shopName = shopName,
+                        ownerName = ownerName,
+                        phone = normalizedPhone,
+                        address = address,
+                        district = district,
+                        businessType = businessType,
+                        pin = normalizedPin,
+                        shopId = shopId
+                    )
+
+                    if (repoResult.isFailure) {
+                        onResult(false, repoResult.exceptionOrNull()?.message ?: "স্থানীয় ডাটাবেজে সংরক্ষণ ব্যর্থ হয়েছে!", null)
+                        return@launch
+                    }
+                }
+
+                val newAdmin = repository.getUserByPhone(normalizedPhone) ?: User(
+                    id = effectiveAuthUid,
+                    name = ownerName.trim(),
                     phone = normalizedPhone,
-                    address = address,
-                    district = district,
-                    businessType = businessType,
-                    pin = normalizedPin,
+                    role = UserRole.ADMIN,
+                    pinHash = repository.hashPin(normalizedPin),
+                    isActive = true,
+                    accountStatus = UserAccountStatus.ACTIVE,
                     shopId = shopId
                 )
-
-                if (repoResult.isFailure) {
-                    onResult(false, repoResult.exceptionOrNull()?.message ?: "স্থানীয় ডাটাবেজে সংরক্ষণ ব্যর্থ হয়েছে!", null)
-                    return@launch
-                }
-
-                val (newAdmin, _) = repoResult.getOrThrow()
 
                 // Link Google credentials if provided
                 if (effectiveAuthUid.isNotBlank() || ownerEmail.isNotBlank()) {
@@ -1532,6 +1661,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     onResult(true, "গুগল অ্যাকাউন্ট (${email}) সফলভাবে আপনার দোকানের সাথে সংযুক্ত হয়েছে!")
                 }
                 is BusinessRepository.AuthResult.RequiresShopSelection -> {
+                    onResult(false, "যাচাই ব্যর্থ: " + auth.message)
+                }
+                is BusinessRepository.AuthResult.RequiresPinSetup -> {
                     onResult(false, "যাচাই ব্যর্থ: " + auth.message)
                 }
                 is BusinessRepository.AuthResult.Error -> {

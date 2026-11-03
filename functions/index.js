@@ -191,9 +191,17 @@ function derivePbkdf2Hash(pepperedInput, saltHex, iterations = 100000) {
  * 2. pbkdf2:100000:<salt>:<hash> (Salted only -> upgrades to peppered)
  * 3. 64-char hex string (Legacy plain SHA-256 -> upgrades to peppered + salted PBKDF2)
  */
-function verifyPinAndCheckMigration(inputPinHash, storedPinValue) {
+function verifyPinAndCheckMigration(inputPin, storedPinValue) {
   if (!storedPinValue || typeof storedPinValue !== "string") {
     return { isValid: false, upgradedHash: null };
+  }
+  const cleanInput = String(inputPin || "").trim();
+  if (!cleanInput) return { isValid: false, upgradedHash: null };
+
+  function testMatch(candidate, expectedDerived, saltHex, iterations) {
+    const peppered = applyServerPepper(candidate);
+    const derived = derivePbkdf2Hash(peppered, saltHex, iterations);
+    return timingSafeEqual(derived, expectedDerived);
   }
 
   // A. Format 1: Latest pbkdf2_peppered
@@ -203,10 +211,16 @@ function verifyPinAndCheckMigration(inputPinHash, storedPinValue) {
       const iterations = parseInt(parts[1], 10) || 100000;
       const saltHex = parts[2];
       const expectedDerived = parts[3];
-      const peppered = applyServerPepper(inputPinHash);
-      const derived = derivePbkdf2Hash(peppered, saltHex, iterations);
-      const isValid = timingSafeEqual(derived, expectedDerived);
-      return { isValid, upgradedHash: null };
+      // Test direct raw PIN
+      if (testMatch(cleanInput, expectedDerived, saltHex, iterations)) {
+        return { isValid: true, upgradedHash: null };
+      }
+      // Or if client pre-hashed with SHA-256 (backward-compatible)
+      const clientSha = crypto.createHash("sha256").update(cleanInput).digest("hex");
+      if (testMatch(clientSha, expectedDerived, saltHex, iterations)) {
+        return { isValid: true, upgradedHash: null };
+      }
+      return { isValid: false, upgradedHash: null };
     }
   }
 
@@ -217,12 +231,13 @@ function verifyPinAndCheckMigration(inputPinHash, storedPinValue) {
       const iterations = parseInt(parts[1], 10) || 100000;
       const saltHex = parts[2];
       const expectedDerived = parts[3];
-      const derived = derivePbkdf2Hash(inputPinHash, saltHex, iterations);
-      const isValid = timingSafeEqual(derived, expectedDerived);
-      if (isValid) {
+      const clientSha = crypto.createHash("sha256").update(cleanInput).digest("hex");
+      const isMatch = timingSafeEqual(derivePbkdf2Hash(cleanInput, saltHex, iterations), expectedDerived) ||
+                      timingSafeEqual(derivePbkdf2Hash(clientSha, saltHex, iterations), expectedDerived);
+      if (isMatch) {
         // Upgrade to peppered
         const newSaltHex = crypto.randomBytes(16).toString("hex");
-        const newPeppered = applyServerPepper(inputPinHash);
+        const newPeppered = applyServerPepper(cleanInput);
         const newDerivedHex = derivePbkdf2Hash(newPeppered, newSaltHex, 100000);
         return {
           isValid: true,
@@ -234,10 +249,11 @@ function verifyPinAndCheckMigration(inputPinHash, storedPinValue) {
   }
 
   // C. Format 3: Legacy plain SHA-256
-  const isLegacyMatch = timingSafeEqual(storedPinValue, inputPinHash);
+  const clientSha = crypto.createHash("sha256").update(cleanInput).digest("hex");
+  const isLegacyMatch = timingSafeEqual(storedPinValue, cleanInput) || timingSafeEqual(storedPinValue, clientSha);
   if (isLegacyMatch) {
     const newSaltHex = crypto.randomBytes(16).toString("hex");
-    const newPeppered = applyServerPepper(inputPinHash);
+    const newPeppered = applyServerPepper(cleanInput);
     const newDerivedHex = derivePbkdf2Hash(newPeppered, newSaltHex, 100000);
     return {
       isValid: true,
@@ -267,7 +283,8 @@ exports.verifyPhonePinAndCreateAuthToken = functions
     }
 
     const rawPhone = data.phone;
-    const rawPinHash = data.pinHash;
+    // Accept raw PIN ("1234") or legacy pre-hash
+    const rawPinInput = data.pin !== undefined ? String(data.pin) : (data.pinHash !== undefined ? String(data.pinHash) : "");
     const targetBusinessId = data.targetBusinessId ? String(data.targetBusinessId).trim() : null;
 
     // A. Strict Input Validation
@@ -278,10 +295,11 @@ exports.verifyPhonePinAndCreateAuthToken = functions
       );
     }
 
-    if (!rawPinHash || typeof rawPinHash !== "string" || !/^[a-fA-F0-9]{64}$/.test(rawPinHash)) {
+    const cleanPinInput = rawPinInput.trim();
+    if (!cleanPinInput || (cleanPinInput.length < 4 || cleanPinInput.length > 64)) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "নিরাপদ পিন হ্যাশ (৬৪ অক্ষর হেক্স) প্রদান করা আবশ্যক।"
+        "সঠিক ৪ থেকে ৬ সংখ্যার পিন কোড প্রদান করা আবশ্যক।"
       );
     }
 
@@ -462,7 +480,19 @@ exports.verifyPhonePinAndCreateAuthToken = functions
         }
       }
 
-      const checkResult = verifyPinAndCheckMigration(rawPinHash, storedPin);
+      // Existing Shop Safe Migration: If shop exists in businesses but has no Cloud PIN hash
+      if (!storedPin) {
+        return {
+          success: false,
+          requiresPinSetup: true,
+          businessId: sampleShop.id,
+          businessName: sampleShop.businessName || sampleShop.name || "আমার দোকান",
+          ownerPhone: normalizedPhone,
+          message: "দোকানের নিরাপত্তা নিশ্চিত করতে একবারের জন্য ওটিপি যাচাই ও পিন সেটআপ প্রয়োজন।"
+        };
+      }
+
+      const checkResult = verifyPinAndCheckMigration(cleanPinInput, storedPin);
       isPinCorrect = checkResult.isValid;
       upgradedHashToSave = checkResult.upgradedHash;
     } else if (matchedStaffRecords.length > 0) {
@@ -487,7 +517,7 @@ exports.verifyPhonePinAndCreateAuthToken = functions
           continue;
         }
 
-        const checkResult = verifyPinAndCheckMigration(rawPinHash, sData.pinHash);
+        const checkResult = verifyPinAndCheckMigration(cleanPinInput, sData.pinHash);
         if (checkResult.isValid) {
           isPinCorrect = true;
           upgradedHashToSave = checkResult.upgradedHash;
@@ -509,7 +539,7 @@ exports.verifyPhonePinAndCreateAuthToken = functions
         for (const sRec of matchedStaffRecords) {
           const sData = sRec.staffData || {};
           if (sData.isActive === false || sData.status === "INACTIVE" || sData.status === "SUSPENDED") {
-            const testResult = verifyPinAndCheckMigration(rawPinHash, sData.pinHash);
+            const testResult = verifyPinAndCheckMigration(cleanPinInput, sData.pinHash);
             if (testResult.isValid) {
               throw new functions.https.HttpsError(
                 "permission-denied",
@@ -736,7 +766,7 @@ exports.registerPhoneShopWithCustomToken = functions
     const rawShopName = data.shopName;
     const rawOwnerName = data.ownerName;
     const rawPhone = data.phone;
-    const rawPinHash = data.pinHash;
+    const rawPinInput = data.pin !== undefined ? String(data.pin) : (data.pinHash !== undefined ? String(data.pinHash) : "");
     const rawAddress = data.address || "";
     const rawDistrict = data.district || "";
     const rawBusinessType = data.businessType || "মুদি ও ডিপার্টমেন্টাল";
@@ -756,10 +786,11 @@ exports.registerPhoneShopWithCustomToken = functions
       );
     }
 
-    if (!rawPinHash || typeof rawPinHash !== "string" || !/^[a-fA-F0-9]{64}$/.test(rawPinHash)) {
+    const cleanPinInput = rawPinInput.trim();
+    if (!cleanPinInput || (cleanPinInput.length < 4 || cleanPinInput.length > 64)) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "নিরাপদ পিন হ্যাশ (৬৪ অক্ষর হেক্স) প্রদান করা আবশ্যক।"
+        "সঠিক ৪ থেকে ৬ সংখ্যার পিন কোড প্রদান করা আবশ্যক।"
       );
     }
 
@@ -875,7 +906,7 @@ exports.registerPhoneShopWithCustomToken = functions
 
     // Secure Salted & Peppered PBKDF2 hash computation
     const saltHex = crypto.randomBytes(16).toString("hex");
-    const peppered = applyServerPepper(rawPinHash);
+    const peppered = applyServerPepper(cleanPinInput);
     const derivedHex = derivePbkdf2Hash(peppered, saltHex, 100000);
     const saltedPbkdf2Hash = `pbkdf2_peppered:100000:${saltHex}:${derivedHex}`;
 
@@ -976,6 +1007,183 @@ exports.registerPhoneShopWithCustomToken = functions
       ownerUid: newOwnerUid,
       targetUid: newOwnerUid,
       ownerName: rawOwnerName.trim(),
+      role: "ADMIN",
+      phone: normalizedPhone,
+    };
+  });
+
+/**
+ * 3. setupExistingShopPinWithOtp
+ * Secure HTTPS Callable Function to initialize/reset Cloud PIN for existing shops using Firebase Phone Auth OTP
+ */
+exports.setupExistingShopPinWithOtp = functions
+  .runWith({ secrets: [serverPinPepperSecret] })
+  .https.onCall(async (data, context) => {
+    // App Check validation & enforcement
+    if (context.app === undefined) {
+      console.warn("App Check unverified for PIN setup caller IP:", context.rawRequest?.ip);
+      if (process.env.APP_CHECK_ENFORCED === "true") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "নিরাপত্তা যাচাইকরণ ব্যর্থ হয়েছে: বৈধ Firebase App Check টোকেন অনুপস্থিত বা অবৈধ।"
+        );
+      }
+    }
+
+    const rawPhone = data.phone;
+    const rawPinInput = data.pin !== undefined ? String(data.pin) : (data.pinHash !== undefined ? String(data.pinHash) : "");
+    const rawBusinessId = data.businessId;
+
+    if (!rawPhone || !rawPinInput || !rawBusinessId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "মোবাইল নম্বর, পিন এবং বিজনেস আইডি প্রদান করা আবশ্যক।"
+      );
+    }
+
+    const normalizedPhone = normalizeBangladeshiPhone(rawPhone);
+    const cleanPinInput = rawPinInput.trim();
+    const cleanBusinessId = String(rawBusinessId).trim();
+
+    if (cleanPinInput.length < 4 || cleanPinInput.length > 6) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "পিন কোড অবশ্যই ৪ থেকে ৬ সংখ্যার হতে হবে।"
+      );
+    }
+
+    // Phone Auth OTP Verification
+    let isPhoneOwnershipVerified = false;
+    if (context.auth && context.auth.token) {
+      const authPhone = normalizeBangladeshiPhone(context.auth.token.phone_number || "");
+      if (authPhone === normalizedPhone) {
+        isPhoneOwnershipVerified = true;
+      }
+    }
+
+    if (!isPhoneOwnershipVerified && data.idToken) {
+      try {
+        const decoded = await admin.auth().verifyIdToken(data.idToken);
+        const decodedPhone = normalizeBangladeshiPhone(decoded.phone_number || "");
+        if (decodedPhone === normalizedPhone) {
+          isPhoneOwnershipVerified = true;
+        }
+      } catch (_e) {}
+    }
+
+    if (!isPhoneOwnershipVerified && process.env.NODE_ENV === "test" && data.skipPhoneAuthForTest === true) {
+      isPhoneOwnershipVerified = true;
+    }
+
+    if (!isPhoneOwnershipVerified) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "দোকানের পিন সেটআপ করতে ওটিপি (OTP) দিয়ে মোবাইল নম্বরের মালিকানা নিশ্চিত করা বাধ্যতামূলক।"
+      );
+    }
+
+    // Lookup business
+    const bizRef = db.collection("businesses").doc(cleanBusinessId);
+    const bizDoc = await bizRef.get();
+    if (!bizDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "দোকানটি খুঁজে পাওয়া যায়নি।");
+    }
+
+    const bizData = bizDoc.data() || {};
+    const ownerPhone = normalizeBangladeshiPhone(bizData.ownerPhone || bizData.phone || "");
+    if (ownerPhone !== normalizedPhone) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "এই দোকানের রেজিস্টার্ড মোবাইল নম্বরের সাথে আপনার মোবাইল নম্বরের মিল নেই।"
+      );
+    }
+
+    // Compute salted & peppered PBKDF2 hash
+    const saltHex = crypto.randomBytes(16).toString("hex");
+    const peppered = applyServerPepper(cleanPinInput);
+    const derivedHex = derivePbkdf2Hash(peppered, saltHex, 100000);
+    const saltedPbkdf2Hash = `pbkdf2_peppered:100000:${saltHex}:${derivedHex}`;
+    const ownerUid = bizData.ownerUid || `owner_${cleanBusinessId}`;
+
+    // Transactional save to protect existing data: ONLY adds/updates PIN hash
+    await db.runTransaction(async (t) => {
+      t.update(bizRef, {
+        ownerPinHash: saltedPbkdf2Hash,
+        pinHash: saltedPbkdf2Hash,
+        pinSecurityVersion: 2,
+        updatedAt: Date.now(),
+      });
+
+      const regRef = db.collection("registered_phones").doc(normalizedPhone);
+      t.set(
+        regRef,
+        {
+          phone: normalizedPhone,
+          businessId: cleanBusinessId,
+          businessName: bizData.businessName || bizData.name || "আমার দোকান",
+          ownerName: bizData.ownerName || "অ্যাডমিন",
+          ownerUid: ownerUid,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      const staffRef = bizRef.collection("staff_by_phone").doc(normalizedPhone);
+      t.set(
+        staffRef,
+        {
+          userId: ownerUid,
+          name: bizData.ownerName || "অ্যাডমিন",
+          phone: normalizedPhone,
+          role: "ADMIN",
+          pinHash: saltedPbkdf2Hash,
+          pinSecurityVersion: 2,
+          isActive: true,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+    });
+
+    // Create Firebase Auth user if not existing
+    try {
+      await admin.auth().getUser(ownerUid);
+    } catch (err) {
+      if (err.code === "auth/user-not-found") {
+        await admin.auth().createUser({
+          uid: ownerUid,
+          displayName: bizData.ownerName || "অ্যাডমিন",
+          phoneNumber: "+88" + normalizedPhone,
+        });
+      }
+    }
+
+    // Mint Custom Token with Claims
+    const customClaims = {
+      businessId: cleanBusinessId,
+      role: "ADMIN",
+      phone: normalizedPhone,
+      authMethod: "PHONE_PIN_MIGRATED",
+    };
+    let customToken;
+    try {
+      customToken = await admin.auth().createCustomToken(ownerUid, customClaims);
+    } catch (tokenErr) {
+      console.error("Critical error creating migration custom token:", tokenErr);
+      throw new functions.https.HttpsError(
+        "internal",
+        "প্রমাণীকরণ টোকেন তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+      );
+    }
+
+    return {
+      success: true,
+      customToken: customToken,
+      businessId: cleanBusinessId,
+      businessName: bizData.businessName || bizData.name || "আমার দোকান",
+      ownerUid: ownerUid,
+      targetUid: ownerUid,
+      ownerName: bizData.ownerName || "অ্যাডমিন",
       role: "ADMIN",
       phone: normalizedPhone,
     };
