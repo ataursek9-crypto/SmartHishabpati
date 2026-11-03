@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('crypto');
@@ -452,4 +453,55 @@ describe('Smart Hishabpati Enterprise Zero-Trust Security Suite', () => {
       (err) => err.code === 'permission-denied'
     );
   });
+
+  // Test 10: App Check Validation Logic (Unit Test only — Real Integration Test is in firestore.test.js Test 22)
+  it('App Check validation logic (Unit Test): helper validation blocks unverified callers when APP_CHECK_ENFORCED is true, permits valid tokens', () => {
+    function validateAppCheck(context, enforced) {
+      if (context.app === undefined) {
+        if (enforced) {
+          const err = new Error('নিরাপত্তা যাচাইকরণ ব্যর্থ হয়েছে: বৈধ Firebase App Check টোকেন অনুপস্থিত বা অবৈধ।');
+          err.code = 'failed-precondition';
+          throw err;
+        }
+        return 'WARNING_LOGGED_MONITORING_MODE';
+      }
+      return 'VALID_APP_CHECK_VERIFIED';
+    }
+
+    // A. When APP_CHECK_ENFORCED is false (monitoring mode)
+    assert.strictEqual(validateAppCheck({ app: undefined }, false), 'WARNING_LOGGED_MONITORING_MODE');
+    assert.strictEqual(validateAppCheck({ app: { appId: '1:484040397249:android:8a883b7879abd19bd6df40' } }, false), 'VALID_APP_CHECK_VERIFIED');
+
+    // B. When APP_CHECK_ENFORCED is true
+    assert.throws(
+      () => validateAppCheck({ app: undefined }, true),
+      (err) => err.code === 'failed-precondition' && err.message.includes('App Check')
+    );
+    assert.strictEqual(
+      validateAppCheck({ app: { appId: '1:484040397249:android:8a883b7879abd19bd6df40' } }, true),
+      'VALID_APP_CHECK_VERIFIED'
+    );
+  });
+
+  // Test 11: Production Secret Manager Isolation
+  it('Production mode strictly requires Secret Manager and rejects process.env fallback', () => {
+    const originalPepper = process.env.SERVER_PIN_PEPPER;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalEmulator = process.env.FUNCTIONS_EMULATOR;
+    try {
+      delete process.env.SERVER_PIN_PEPPER;
+      process.env.NODE_ENV = 'production';
+      delete process.env.FUNCTIONS_EMULATOR;
+      // In production, getServerPepper must reject if secret is absent from Secret Manager
+      assert.throws(
+        () => getServerPepper(),
+        (err) => err.code === 'failed-precondition'
+      );
+    } finally {
+      process.env.SERVER_PIN_PEPPER = originalPepper;
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalEmulator) process.env.FUNCTIONS_EMULATOR = originalEmulator;
+    }
+  });
 });
+

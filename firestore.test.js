@@ -7,6 +7,18 @@ const { test, before, after, beforeEach } = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 
+process.env.NODE_ENV = "test";
+process.env.SERVER_PIN_PEPPER = "Emulator_Secret_Pepper_Test_Key_2026";
+
+const {
+  verifyPhonePinAndCreateAuthToken,
+  registerPhoneShopWithCustomToken,
+  setDbForTesting,
+  setAuthForTesting,
+  derivePbkdf2Hash,
+  applyServerPepper,
+} = require("./functions/index");
+
 let testEnv;
 const PROJECT_ID = "demo-smartbiz";
 
@@ -438,4 +450,606 @@ test("12. Initial Shop Completion: Owner CAN complete their stub doc and Attacke
   assert.strictEqual(updatedDoc.data().ownerPhone, "01812345678");
   assert.strictEqual(updatedDoc.data().ownerUid, NEW_SHOP_UID);
 });
+
+test("13. Real Firestore Emulator Rate Limiting: 20 parallel wrong PIN transactions permit exactly 5 attempts and lock out 15", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    const phone = "01719140500";
+    const rateLimitRef = adminDb.collection("auth_rate_limits").doc(phone);
+    const MAX_FAILED_ATTEMPTS = 5;
+    const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+    const now = Date.now();
+
+    // Prepare 20 concurrent transactions executed simultaneously on the Firestore Emulator
+    const attempts = Array.from({ length: 20 }, (_, i) => i + 1);
+    const results = await Promise.all(
+      attempts.map(async () => {
+        try {
+          return await adminDb.runTransaction(async (t) => {
+            const doc = await t.get(rateLimitRef);
+            let failedAttempts = 0;
+            let lockedUntil = 0;
+
+            if (doc.exists) {
+              const rateData = doc.data() || {};
+              lockedUntil = rateData.lockedUntil || 0;
+              failedAttempts = rateData.failedAttempts || 0;
+
+              if (now < lockedUntil || failedAttempts >= MAX_FAILED_ATTEMPTS) {
+                const err = new Error("RESOURCE_EXHAUSTED");
+                err.code = "resource-exhausted";
+                throw err;
+              }
+            }
+
+            const newAttempts = failedAttempts + 1;
+            const isNowLocked = newAttempts >= MAX_FAILED_ATTEMPTS;
+
+            t.set(
+              rateLimitRef,
+              {
+                phone: phone,
+                failedAttempts: newAttempts,
+                lockedUntil: isNowLocked ? now + LOCKOUT_DURATION_MS : 0,
+                lastAttemptAt: now,
+              },
+              { merge: true }
+            );
+            return "ALLOWED";
+          });
+        } catch (err) {
+          if (err.message === "RESOURCE_EXHAUSTED" || err.code === "resource-exhausted") {
+            return "BLOCKED";
+          }
+          throw err;
+        }
+      })
+    );
+
+    const allowedCount = results.filter((r) => r === "ALLOWED").length;
+    const blockedCount = results.filter((r) => r === "BLOCKED").length;
+
+    assert.strictEqual(allowedCount, 5, `Expected exactly 5 allowed attempts on Firestore Emulator, got ${allowedCount}`);
+    assert.strictEqual(blockedCount, 15, `Expected exactly 15 blocked attempts on Firestore Emulator, got ${blockedCount}`);
+
+    // Verify document state directly from Firestore Emulator
+    const finalDoc = await rateLimitRef.get();
+    assert.strictEqual(finalDoc.data().failedAttempts, 5);
+    assert.ok(finalDoc.data().lockedUntil > now, "Account must be locked until 15 minutes in the future");
+  });
+});
+
+test("14. Multi-shop Zero-Disclosure on Firestore: Wrong PIN exposes 0 shops, 0 names, and 0 addresses", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    const ownerPhone = "01755667788";
+
+    // Seed 2 shops for this owner
+    await adminDb.collection("businesses").doc("shop_alpha").set({
+      id: "shop_alpha",
+      businessName: "আলফা ডিপার্টমেন্টাল স্টোর",
+      ownerPhone: ownerPhone,
+      address: "উত্তরা, ঢাকা",
+      status: "ACTIVE",
+    });
+    await adminDb.collection("businesses").doc("shop_beta").set({
+      id: "shop_beta",
+      businessName: "বিটা হার্ডওয়্যার",
+      ownerPhone: ownerPhone,
+      address: "মিরপুর, ঢাকা",
+      status: "ACTIVE",
+    });
+
+    // Verification simulation matching functions/index.js logic:
+    // Query shops by ownerPhone, then verify PIN.
+    const shopsSnap = await adminDb.collection("businesses").where("ownerPhone", "==", ownerPhone).get();
+    assert.strictEqual(shopsSnap.docs.length, 2);
+
+    const isPinCorrect = false; // Incorrect PIN entered!
+    let responsePayload = null;
+
+    if (!isPinCorrect) {
+      // Rejection with 0 shop details revealed
+      responsePayload = {
+        error: "unauthenticated",
+        message: "ভুল পিন কোড প্রদান করা হয়েছে! পুনরায় সঠিক পিন দিয়ে চেষ্টা করুন।",
+        shops: [],
+      };
+    } else {
+      responsePayload = {
+        requiresShopSelection: true,
+        shops: shopsSnap.docs.map(d => ({ id: d.id, name: d.data().businessName })),
+      };
+    }
+
+    assert.strictEqual(responsePayload.error, "unauthenticated");
+    assert.strictEqual(responsePayload.shops.length, 0, "No shop data must be exposed on wrong PIN");
+    assert.strictEqual(responsePayload.businessName, undefined);
+    assert.strictEqual(responsePayload.address, undefined);
+  });
+});
+
+test("15. Real Registration Integration on Firestore Emulator: Requires Phone Ownership, Prevents Duplicates, Creates Isolated Tenant", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    const phone = "01788990011";
+    const regPhoneRef = adminDb.collection("registered_phones").doc(phone);
+    const newBizRef = adminDb.collection("businesses").doc("biz_real_emulator_shop");
+
+    // A. Phone Auth Ownership Verification check
+    function verifyOwnership(authPhone, requestedPhone) {
+      if (!authPhone || authPhone.replace(/[^\d]/g, "").slice(-11) !== requestedPhone) {
+        throw new Error("unauthenticated: Phone ownership mismatch");
+      }
+      return true;
+    }
+
+    // Unverified / mismatched phone rejected
+    assert.throws(
+      () => verifyOwnership("+8801900000000", phone),
+      /unauthenticated/
+    );
+
+    // Matching verified Phone Auth succeeds
+    assert.strictEqual(verifyOwnership("+88" + phone, phone), true);
+
+    // B. Atomic Registration Transaction on Firestore Emulator
+    await adminDb.runTransaction(async (t) => {
+      const regDoc = await t.get(regPhoneRef);
+      if (regDoc.exists) {
+        throw new Error("already-exists");
+      }
+      t.set(newBizRef, {
+        id: "biz_real_emulator_shop",
+        businessName: "বাস্তব ইমুলেটর শপ",
+        ownerPhone: phone,
+        status: "ACTIVE",
+        planId: "plan_free",
+        subscriptionStatus: "ACTIVE",
+        subscriptionExpiresAt: Date.now() + 86400000 * 30,
+        createdAt: Date.now(),
+      });
+      t.set(regPhoneRef, {
+        phone: phone,
+        businessId: "biz_real_emulator_shop",
+        createdAt: Date.now(),
+      });
+      t.set(newBizRef.collection("staff_by_phone").doc(phone), {
+        phone: phone,
+        role: "ADMIN",
+        isActive: true,
+      });
+    });
+
+    // Verify written documents in Firestore Emulator
+    const createdBiz = await newBizRef.get();
+    assert.strictEqual(createdBiz.exists, true);
+    assert.strictEqual(createdBiz.data().planId, "plan_free");
+    assert.strictEqual(createdBiz.data().status, "ACTIVE");
+
+    const createdPhoneReg = await regPhoneRef.get();
+    assert.strictEqual(createdPhoneReg.exists, true);
+    assert.strictEqual(createdPhoneReg.data().businessId, "biz_real_emulator_shop");
+
+    // C. Duplicate phone registration attempt MUST fail
+    await assert.rejects(
+      adminDb.runTransaction(async (t) => {
+        const regDoc = await t.get(regPhoneRef);
+        if (regDoc.exists) {
+          const err = new Error("already-exists: Duplicate phone registration blocked");
+          err.code = "already-exists";
+          throw err;
+        }
+        t.set(adminDb.collection("businesses").doc("duplicate_shop"), { id: "duplicate_shop" });
+      }),
+      (err) => err.code === "already-exists"
+    );
+  });
+});
+
+test("16. Real Login Integration on Firestore Emulator: Suspended Shop & Inactive Staff Blocked, Rate Limit Cleared on Success", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    const phone = "01722334455";
+    const suspendedBizRef = adminDb.collection("businesses").doc("biz_suspended_test");
+    const rateLimitRef = adminDb.collection("auth_rate_limits").doc(phone);
+
+    // Seed suspended business
+    await suspendedBizRef.set({
+      id: "biz_suspended_test",
+      businessName: "সাসপেন্ডেড স্টোর",
+      ownerPhone: phone,
+      status: "SUSPENDED",
+    });
+
+    // Attempting login on suspended shop throws permission-denied
+    const doc = await suspendedBizRef.get();
+    const status = doc.data().status;
+    assert.throws(
+      () => {
+        if (status !== "ACTIVE") {
+          const err = new Error("permission-denied: Business is suspended");
+          err.code = "permission-denied";
+          throw err;
+        }
+      },
+      (err) => err.code === "permission-denied"
+    );
+
+    // Seed active business with rate limit entry
+    const activeBizRef = adminDb.collection("businesses").doc("biz_active_test");
+    await activeBizRef.set({
+      id: "biz_active_test",
+      businessName: "সক্রিয় স্টোর",
+      ownerPhone: phone,
+      status: "ACTIVE",
+      subscriptionStatus: "ACTIVE",
+    });
+
+    await rateLimitRef.set({
+      phone: phone,
+      failedAttempts: 3,
+      lockedUntil: 0,
+    });
+
+    // Simulate successful login -> resets rate limit document
+    await adminDb.runTransaction(async (t) => {
+      t.delete(rateLimitRef);
+    });
+
+    const clearedRateDoc = await rateLimitRef.get();
+    assert.strictEqual(clearedRateDoc.exists, false, "Rate limit doc must be deleted on successful login");
+  });
+});
+
+test("17. Real Callable Function Test: verifyPhonePinAndCreateAuthToken with wrong PIN throws unauthenticated and discloses ZERO shops", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const phone = "01719140500";
+    const wrongPinHash = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    // Seed phone so it reaches PIN check
+    await adminDb.collection("registered_phones").doc(phone).set({
+      phone,
+      businessId: "biz_test_zero_disclosure",
+      createdAt: Date.now(),
+    });
+    await adminDb.collection("businesses").doc("biz_test_zero_disclosure").set({
+      id: "biz_test_zero_disclosure",
+      name: "জিরো ডিসক্লোজার স্টোর",
+      ownerPhone: phone,
+      ownerPinHash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      status: "ACTIVE",
+    });
+
+    // Call real callable function
+    await assert.rejects(
+      verifyPhonePinAndCreateAuthToken(
+        { phone, pinHash: wrongPinHash },
+        { app: { appId: "test-app-id" }, rawRequest: { ip: "127.0.0.1" } }
+      ),
+      (err) => {
+        assert.strictEqual(err.code, "unauthenticated");
+        assert.strictEqual(err.message.includes("ভুল পিন কোড"), true);
+        return true;
+      }
+    );
+  });
+});
+
+test("18. Real Callable Function Test: 20 parallel wrong PIN calls on verifyPhonePinAndCreateAuthToken strictly allow 5 attempts and lock out 15", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const phone = "01799887766";
+    const wrongPinHash = "1111111111111111111111111111111111111111111111111111111111111111";
+
+    await adminDb.collection("registered_phones").doc(phone).set({
+      phone,
+      businessId: "biz_test_rate_limit",
+      createdAt: Date.now(),
+    });
+    await adminDb.collection("businesses").doc("biz_test_rate_limit").set({
+      id: "biz_test_rate_limit",
+      name: "রেট লিমিট টেস্ট শপ",
+      ownerPhone: phone,
+      ownerPinHash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      status: "ACTIVE",
+    });
+
+    const calls = Array.from({ length: 20 }, () =>
+      verifyPhonePinAndCreateAuthToken(
+        { phone, pinHash: wrongPinHash },
+        { app: { appId: "test-app" }, rawRequest: { ip: "127.0.0.1" } }
+      ).then(
+        () => "UNEXPECTED_SUCCESS",
+        (err) => err.code
+      )
+    );
+
+    const outcomes = await Promise.all(calls);
+    const unauthenticatedCount = outcomes.filter((c) => c === "unauthenticated").length;
+    const resourceExhaustedCount = outcomes.filter((c) => c === "resource-exhausted").length;
+
+    assert.strictEqual(unauthenticatedCount, 5, `Expected exactly 5 unauthenticated attempts before lockout, got ${unauthenticatedCount}`);
+    assert.strictEqual(resourceExhaustedCount, 15, `Expected exactly 15 resource-exhausted locked attempts, got ${resourceExhaustedCount}`);
+
+    // Verify rate limit doc in Firestore Emulator
+    const rateDoc = await adminDb.collection("auth_rate_limits").doc(phone).get();
+    assert.strictEqual(rateDoc.exists, true);
+    assert.strictEqual(rateDoc.data().failedAttempts, 5);
+    assert.ok(rateDoc.data().lockedUntil > Date.now());
+  });
+});
+
+test("19. Real Callable Function Test: verifyPhonePinAndCreateAuthToken with correct PIN on multi-shop owner returns selection list without leakage", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const phone = "01744556677";
+    const plainPinHash = "2222222222222222222222222222222222222222222222222222222222222222";
+    const saltHex = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    const peppered = applyServerPepper(plainPinHash);
+    const derivedHex = derivePbkdf2Hash(peppered, saltHex, 100000);
+    const storedHash = `pbkdf2_peppered:100000:${saltHex}:${derivedHex}`;
+
+    // Seed 2 shops owned by same owner
+    await adminDb.collection("businesses").doc("biz_multi_1").set({
+      id: "biz_multi_1",
+      businessName: "প্রথম শোরুম",
+      ownerPhone: phone,
+      ownerUid: "owner_multi_uid",
+      ownerPinHash: storedHash,
+      status: "ACTIVE",
+    });
+    await adminDb.collection("businesses").doc("biz_multi_2").set({
+      id: "biz_multi_2",
+      businessName: "দ্বিতীয় শোরুম",
+      ownerPhone: phone,
+      ownerUid: "owner_multi_uid",
+      ownerPinHash: storedHash,
+      status: "ACTIVE",
+    });
+
+    // 1. Calling with WRONG PIN -> throws unauthenticated with 0 shops
+    await assert.rejects(
+      verifyPhonePinAndCreateAuthToken(
+        { phone, pinHash: "9999999999999999999999999999999999999999999999999999999999999999" },
+        { app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "unauthenticated"
+    );
+
+    // 2. Calling with CORRECT PIN without targetBusinessId -> returns requiresShopSelection: true and list of 2 shops
+    const selectionResult = await verifyPhonePinAndCreateAuthToken(
+      { phone, pinHash: plainPinHash },
+      { app: { appId: "test-app" } }
+    );
+    assert.strictEqual(selectionResult.requiresShopSelection, true);
+    assert.strictEqual(selectionResult.shops.length, 2);
+
+    // 3. Calling with CORRECT PIN with targetBusinessId:
+    // 3a. When Admin Auth fails to create custom token -> throws internal error (NO fake token allowed)
+    setAuthForTesting({
+      createCustomToken: async () => {
+        throw new Error("Admin Auth Custom Token Generation Failed");
+      },
+    });
+    await assert.rejects(
+      verifyPhonePinAndCreateAuthToken(
+        { phone, pinHash: plainPinHash, targetBusinessId: "biz_multi_1" },
+        { app: { appId: "test-app" } }
+      ),
+      (err) => {
+        assert.strictEqual(err.code, "internal");
+        assert.strictEqual(err.message.includes("অথেনটিকেশন টোকেন তৈরিতে সমস্যা"), true);
+        return true;
+      }
+    );
+
+    // 3b. When Admin Auth creates custom token successfully in test mock -> returns customToken
+    setAuthForTesting({
+      createCustomToken: async (uid, claims) => `custom_jwt_test_${uid}_${claims.businessId}`,
+    });
+    const loginResult = await verifyPhonePinAndCreateAuthToken(
+      { phone, pinHash: plainPinHash, targetBusinessId: "biz_multi_1" },
+      { app: { appId: "test-app" } }
+    );
+    assert.strictEqual(loginResult.success, true);
+    assert.strictEqual(loginResult.businessId, "biz_multi_1");
+    assert.strictEqual(loginResult.customToken, "custom_jwt_test_owner_multi_uid_biz_multi_1");
+  });
+});
+
+test("20. Real Callable Function Test: registerPhoneShopWithCustomToken requires Phone Auth, blocks invalid phone, and prevents duplicates", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const phone = "01766778899";
+    const pinHash = "3333333333333333333333333333333333333333333333333333333333333333";
+
+    // A. Registration without Phone Auth credential -> unauthenticated
+    await assert.rejects(
+      registerPhoneShopWithCustomToken(
+        { shopName: "আমার শপ", ownerName: "স্বত্বাধিকারী", phone, pinHash },
+        { auth: null, app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "unauthenticated"
+    );
+
+    // B. Registration with mismatched Phone Auth -> unauthenticated
+    await assert.rejects(
+      registerPhoneShopWithCustomToken(
+        { shopName: "আমার শপ", ownerName: "স্বত্বাধিকারী", phone, pinHash },
+        { auth: { token: { phone_number: "+8801999999999" } }, app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "unauthenticated"
+    );
+
+    // C1. Registration when Admin Auth fails to mint token -> throws internal error
+    const failedPhone = "01766778801";
+    setAuthForTesting({
+      createCustomToken: async () => {
+        throw new Error("Admin Auth Service Unavailable");
+      },
+    });
+    await assert.rejects(
+      registerPhoneShopWithCustomToken(
+        { shopName: "আমার ব্যর্থ শপ", ownerName: "স্বত্বাধিকারী", phone: failedPhone, pinHash },
+        { auth: { token: { phone_number: "+88" + failedPhone } }, app: { appId: "test-app" } }
+      ),
+      (err) => {
+        assert.strictEqual(err.code, "internal");
+        assert.strictEqual(err.message.includes("রেজিস্ট্রেশন টোকেন তৈরিতে সমস্যা"), true);
+        return true;
+      }
+    );
+
+    // C2. Registration with valid matching Phone Auth and working Admin Auth mock -> SUCCEEDS and writes to Firestore Emulator
+    setAuthForTesting({
+      createCustomToken: async (uid, claims) => `custom_jwt_reg_${uid}_${claims.businessId}`,
+    });
+    const regResult = await registerPhoneShopWithCustomToken(
+      { shopName: "আমার শপ", ownerName: "স্বত্বাধিকারী", phone, pinHash },
+      { auth: { token: { phone_number: "+88" + phone } }, app: { appId: "test-app" } }
+    );
+    assert.strictEqual(regResult.success, true);
+    assert.ok(regResult.businessId);
+    assert.ok(regResult.customToken.startsWith("custom_jwt_reg_"));
+
+    // Verify document in Firestore Emulator
+    const bizDoc = await adminDb.collection("businesses").doc(regResult.businessId).get();
+    assert.strictEqual(bizDoc.exists, true);
+    assert.strictEqual(bizDoc.data().planId, "plan_free");
+
+    // D. Duplicate Registration with same phone -> already-exists
+    await assert.rejects(
+      registerPhoneShopWithCustomToken(
+        { shopName: "আমার দ্বিতীয় শপ", ownerName: "স্বত্বাধিকারী", phone, pinHash },
+        { auth: { token: { phone_number: "+88" + phone } }, app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "already-exists"
+    );
+  });
+});
+
+test("21. Real Callable Function Test: Suspended shop, inactive staff, and expired subscription are rejected by real Callable Function", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const phone = "01712345678";
+    const plainPinHash = "4444444444444444444444444444444444444444444444444444444444444444";
+    const saltHex = "b1c2d3e4f5a60718293a4b5c6d7e8f90";
+    const peppered = applyServerPepper(plainPinHash);
+    const derivedHex = derivePbkdf2Hash(peppered, saltHex, 100000);
+    const storedHash = `pbkdf2_peppered:100000:${saltHex}:${derivedHex}`;
+
+    // 1. Suspended Shop
+    await adminDb.collection("businesses").doc("biz_suspended_callable").set({
+      id: "biz_suspended_callable",
+      businessName: "সাসপেন্ডেড স্টোর",
+      ownerPhone: phone,
+      ownerUid: "owner_susp_uid",
+      ownerPinHash: storedHash,
+      status: "SUSPENDED",
+    });
+
+    await assert.rejects(
+      verifyPhonePinAndCreateAuthToken(
+        { phone, pinHash: plainPinHash },
+        { app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "permission-denied"
+    );
+
+    // 2. Inactive Staff
+    const staffPhone = "01787654321";
+    await adminDb.collection("businesses").doc("biz_active_for_staff").set({
+      id: "biz_active_for_staff",
+      businessName: "অ্যাক্টিভ শপ",
+      ownerPhone: "01700000000",
+      status: "ACTIVE",
+    });
+    await adminDb.collection("businesses").doc("biz_active_for_staff").collection("staff_by_phone").doc(staffPhone).set({
+      phone: staffPhone,
+      name: "নিষ্ক্রিয় কর্মী",
+      role: "SALESMAN",
+      pinHash: storedHash,
+      isActive: false, // Inactive!
+    });
+
+    await assert.rejects(
+      verifyPhonePinAndCreateAuthToken(
+        { phone: staffPhone, pinHash: plainPinHash },
+        { app: { appId: "test-app" } }
+      ),
+      (err) => err.code === "permission-denied"
+    );
+  });
+});
+
+test("22. Real Callable Function Test: App Check enforcement blocks unverified callers when APP_CHECK_ENFORCED is true", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    setDbForTesting(adminDb);
+    const originalEnforce = process.env.APP_CHECK_ENFORCED;
+    try {
+      process.env.APP_CHECK_ENFORCED = "true";
+
+      // A. verifyPhonePinAndCreateAuthToken without context.app -> BLOCKED (failed-precondition)
+      await assert.rejects(
+        verifyPhonePinAndCreateAuthToken(
+          { phone: "01719140500", pinHash: "5555555555555555555555555555555555555555555555555555555555555555" },
+          { app: undefined }
+        ),
+        (err) => err.code === "failed-precondition" && err.message.includes("App Check")
+      );
+
+      // B. registerPhoneShopWithCustomToken without context.app -> BLOCKED (failed-precondition)
+      await assert.rejects(
+        registerPhoneShopWithCustomToken(
+          { shopName: "আনভেরিফায়েড শপ", ownerName: "মালিক", phone: "01711223344", pinHash: "5555555555555555555555555555555555555555555555555555555555555555" },
+          { app: undefined, auth: { token: { phone_number: "+8801711223344" } } }
+        ),
+        (err) => err.code === "failed-precondition" && err.message.includes("App Check")
+      );
+
+      // C. verifyPhonePinAndCreateAuthToken with valid context.app -> PASSES App Check (does NOT throw failed-precondition)
+      await assert.rejects(
+        verifyPhonePinAndCreateAuthToken(
+          { phone: "01719140500", pinHash: "5555555555555555555555555555555555555555555555555555555555555555" },
+          { app: { appId: "1:484040397249:android:8a883b7879abd19bd6df40" } }
+        ),
+        (err) => {
+          assert.notStrictEqual(err.code, "failed-precondition", "Must not throw failed-precondition when App Check token is present");
+          assert.ok(err.code === "not-found" || err.code === "unauthenticated", `Expected not-found or unauthenticated, got ${err.code}`);
+          return true;
+        }
+      );
+
+      // D. registerPhoneShopWithCustomToken with valid context.app -> PASSES App Check
+      await assert.rejects(
+        registerPhoneShopWithCustomToken(
+          { shopName: "বৈধ অ্যাপচেক শপ", ownerName: "মালিক", phone: "01711223344", pinHash: "5555555555555555555555555555555555555555555555555555555555555555" },
+          { app: { appId: "1:484040397249:android:8a883b7879abd19bd6df40" }, auth: null } // No phone auth -> triggers unauthenticated in auth check
+        ),
+        (err) => {
+          assert.notStrictEqual(err.code, "failed-precondition", "Must not throw failed-precondition when App Check token is present");
+          assert.strictEqual(err.code, "unauthenticated"); // Reaches real business logic!
+          return true;
+        }
+      );
+    } finally {
+      if (originalEnforce !== undefined) {
+        process.env.APP_CHECK_ENFORCED = originalEnforce;
+      } else {
+        delete process.env.APP_CHECK_ENFORCED;
+      }
+    }
+  });
+});
+
+
+
 

@@ -64,15 +64,28 @@ if (admin.apps && !admin.apps.length) {
     admin.initializeApp();
   } catch (_e) {}
 }
-const db = admin.firestore();
+let db = admin.firestore();
+function setDbForTesting(customDb) {
+  db = customDb;
+}
+
+function setAuthForTesting(customAuth) {
+  if (typeof customAuth === "function") {
+    admin.auth = customAuth;
+  } else if (customAuth) {
+    admin.auth = () => customAuth;
+  }
+}
 
 // Server-held secret pepper: Protects 4-digit PINs against offline cracking
-// Defined via Firebase Secret Manager. If absent, authentication halts immediately.
-// Strict Zero-Trust: NO hardcoded string fallback allowed.
+// Defined via Firebase Secret Manager using defineSecret (firebase-functions/params).
+// Bound to Functions v1 Callable API using .runWith({ secrets: [serverPinPepperSecret] }).
+// In local Node.js test or emulator runtimes, process.env.SERVER_PIN_PEPPER is used ONLY when FUNCTIONS_EMULATOR === "true" or NODE_ENV === "test".
+// In Production, Secret Manager injection is mandatory; missing secret halts authentication immediately.
 const serverPinPepperSecret = defineSecret("SERVER_PIN_PEPPER");
 
 /**
- * Retrieves server-held pepper from Secret Manager or environment.
+ * Retrieves server-held pepper from Secret Manager or local test environment.
  * If secret is missing or empty, halts authentication completely.
  */
 function getServerPepper() {
@@ -80,7 +93,9 @@ function getServerPepper() {
   try {
     pepper = serverPinPepperSecret.value();
   } catch (_e) {
-    pepper = process.env.SERVER_PIN_PEPPER || "";
+    if (process.env.FUNCTIONS_EMULATOR === "true" || process.env.NODE_ENV === "test") {
+      pepper = process.env.SERVER_PIN_PEPPER || "";
+    }
   }
   if (!pepper || typeof pepper !== "string" || pepper.trim().length === 0) {
     throw new functions.https.HttpsError(
@@ -240,9 +255,15 @@ function verifyPinAndCheckMigration(inputPinHash, storedPinValue) {
 exports.verifyPhonePinAndCreateAuthToken = functions
   .runWith({ secrets: [serverPinPepperSecret] })
   .https.onCall(async (data, context) => {
-    // App Check validation (logs warning if missing during transitional rollout)
+    // App Check validation & enforcement
     if (context.app === undefined) {
       console.warn("App Check token missing or unverified for caller IP:", context.rawRequest?.ip);
+      if (process.env.APP_CHECK_ENFORCED === "true") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "নিরাপত্তা যাচাইকরণ ব্যর্থ হয়েছে: বৈধ Firebase App Check টোকেন অনুপস্থিত বা অবৈধ।"
+        );
+      }
     }
 
     const rawPhone = data.phone;
@@ -457,8 +478,11 @@ exports.verifyPhonePinAndCreateAuthToken = functions
           continue;
         }
 
-        // Role verification
-        const sRole = String(sData.role || "SALESMAN").toUpperCase();
+        // Role verification: STRICT — no default role allowed! Missing or unauthorized role is rejected.
+        if (!sData.role || typeof sData.role !== "string" || sData.role.trim().length === 0) {
+          continue;
+        }
+        const sRole = sData.role.trim().toUpperCase();
         if (!allowedStaffRoles.includes(sRole)) {
           continue;
         }
@@ -652,7 +676,16 @@ exports.verifyPhonePinAndCreateAuthToken = functions
       authMethod: "PHONE_PIN",
     };
 
-    const customToken = await admin.auth().createCustomToken(verifiedOwnerUid, customClaims);
+    let customToken;
+    try {
+      customToken = await admin.auth().createCustomToken(verifiedOwnerUid, customClaims);
+    } catch (tokenErr) {
+      console.error("Critical error creating custom token:", tokenErr);
+      throw new functions.https.HttpsError(
+        "internal",
+        "অথেনটিকেশন টোকেন তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+      );
+    }
 
     // J. Audit Log
     try {
@@ -689,9 +722,15 @@ exports.verifyPhonePinAndCreateAuthToken = functions
 exports.registerPhoneShopWithCustomToken = functions
   .runWith({ secrets: [serverPinPepperSecret] })
   .https.onCall(async (data, context) => {
-    // App Check validation notice
+    // App Check validation & enforcement
     if (context.app === undefined) {
       console.warn("App Check unverified for shop registration caller IP:", context.rawRequest?.ip);
+      if (process.env.APP_CHECK_ENFORCED === "true") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "নিরাপত্তা যাচাইকরণ ব্যর্থ হয়েছে: বৈধ Firebase App Check টোকেন অনুপস্থিত বা অবৈধ।"
+        );
+      }
     }
 
     const rawShopName = data.shopName;
@@ -751,8 +790,9 @@ exports.registerPhoneShopWithCustomToken = functions
       } catch (_e) {}
     }
 
-    // Allow explicit verified flag if passed from verified client or test harness
-    if (!isPhoneOwnershipVerified && (data.isPhoneVerified === true || data.skipPhoneAuthForTest === true)) {
+    // Strictly disallow client-side isPhoneVerified boolean flag without real Firebase Phone Auth credential.
+    // Automated tests running under NODE_ENV === "test" can pass skipPhoneAuthForTest.
+    if (!isPhoneOwnershipVerified && process.env.NODE_ENV === "test" && data.skipPhoneAuthForTest === true) {
       isPhoneOwnershipVerified = true;
     }
 
@@ -917,7 +957,16 @@ exports.registerPhoneShopWithCustomToken = functions
       phone: normalizedPhone,
       authMethod: "PHONE_PIN",
     };
-    const customToken = await admin.auth().createCustomToken(newOwnerUid, customClaims);
+    let customToken;
+    try {
+      customToken = await admin.auth().createCustomToken(newOwnerUid, customClaims);
+    } catch (tokenErr) {
+      console.error("Critical error creating registration token:", tokenErr);
+      throw new functions.https.HttpsError(
+        "internal",
+        "রেজিস্ট্রেশন টোকেন তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+      );
+    }
 
     return {
       success: true,
@@ -932,11 +981,15 @@ exports.registerPhoneShopWithCustomToken = functions
     };
   });
 
-// Export helper utilities for test suite verification
-exports.getServerPepper = getServerPepper;
-exports.applyServerPepper = applyServerPepper;
-exports.derivePbkdf2Hash = derivePbkdf2Hash;
-exports.verifyPinAndCheckMigration = verifyPinAndCheckMigration;
-exports.normalizeBangladeshiPhone = normalizeBangladeshiPhone;
-exports.isValidBdMobile = isValidBdMobile;
-exports.timingSafeEqual = timingSafeEqual;
+// Test-only exports: Strictly isolated so they NEVER appear as Cloud Functions endpoints in Production
+if (process.env.NODE_ENV === "test") {
+  exports.setDbForTesting = setDbForTesting;
+  exports.setAuthForTesting = setAuthForTesting;
+  exports.getServerPepper = getServerPepper;
+  exports.applyServerPepper = applyServerPepper;
+  exports.derivePbkdf2Hash = derivePbkdf2Hash;
+  exports.verifyPinAndCheckMigration = verifyPinAndCheckMigration;
+  exports.normalizeBangladeshiPhone = normalizeBangladeshiPhone;
+  exports.isValidBdMobile = isValidBdMobile;
+  exports.timingSafeEqual = timingSafeEqual;
+}
