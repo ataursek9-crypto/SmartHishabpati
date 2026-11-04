@@ -193,14 +193,14 @@ fun ShopRegistrationScreen(
             errorMessage = "দয়া করে আপনার সঠিক জিমেইল / ইমেইল ঠিকানা দিন!"
         } else if (cleanPhone.length < 11) {
             errorMessage = "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!"
-        } else if (pin.length < 4) {
-            errorMessage = "অনুগ্রহ করে কমপক্ষে ৪ সংখ্যার গোপন পিন বা পাসওয়ার্ড দিন!"
+        } else if (pin.length != 6 || !pin.all { it.isDigit() }) {
+            errorMessage = "অনুগ্রহ করে ৬-সংখ্যার গোপন পিন লিখুন!"
         } else if (pin != confirmPin) {
             errorMessage = "পিন এবং পিন নিশ্চিতকরণ মিলছে না!"
         } else {
             isSendingOtp = true
-            // If user chose Gmail verification, create Firebase user & send real link
-            val registrationPassword = if (pin.length >= 6) pin else "${pin}99"
+            // If user chose Gmail verification, create Firebase user with the 6-digit PIN as password
+            val registrationPassword = pin.trim()
             viewModel.registerWithEmailPassword(cleanEmail, registrationPassword) { success, msg, user ->
                 isSendingOtp = false
                 if (success && user != null) {
@@ -701,16 +701,16 @@ fun ShopRegistrationScreen(
                                     .testTag("reg_step3_phone_input")
                             )
 
-                            // 4-Digit Security PIN Fields
+                            // 6-Digit Security PIN Fields
                             OutlinedTextField(
                                 value = pin,
                                 onValueChange = {
-                                    if (it.length <= 4 && it.all { c -> c.isDigit() }) {
+                                    if (it.length <= 6 && it.all { c -> c.isDigit() }) {
                                         pin = it
                                         errorMessage = ""
                                     }
                                 },
-                                placeholder = { Text("৪-সংখ্যার গোপন লগইন পিন", color = TextMuted) },
+                                placeholder = { Text("৬-সংখ্যার গোপন লগইন পিন", color = TextMuted) },
                                 leadingIcon = {
                                     Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF718096))
                                 },
@@ -741,12 +741,12 @@ fun ShopRegistrationScreen(
                             OutlinedTextField(
                                 value = confirmPin,
                                 onValueChange = {
-                                    if (it.length <= 4 && it.all { c -> c.isDigit() }) {
+                                    if (it.length <= 6 && it.all { c -> c.isDigit() }) {
                                         confirmPin = it
                                         errorMessage = ""
                                     }
                                 },
-                                placeholder = { Text("পিন পুনরায় লিখুন", color = TextMuted) },
+                                placeholder = { Text("৬-সংখ্যার পিন পুনরায় লিখুন", color = TextMuted) },
                                 leadingIcon = {
                                     Icon(Icons.Default.LockClock, contentDescription = null, tint = Color(0xFF718096))
                                 },

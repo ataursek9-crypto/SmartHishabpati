@@ -97,12 +97,12 @@ class SmartHishabpatiRegistrationWizardTest {
 
     @Test
     fun `test PIN security validation rules`() {
-        val validPin = "1234"
-        val mismatchConfirmPin = "4321"
-        val shortPin = "12"
+        val validPin = "123456"
+        val mismatchConfirmPin = "654321"
+        val shortPin = "1234"
 
-        assertTrue(validPin.length == 4 && validPin.all { it.isDigit() })
-        assertFalse(shortPin.length == 4)
+        assertTrue(validPin.length == 6 && validPin.all { it.isDigit() })
+        assertFalse(shortPin.length == 6)
         assertNotEquals(validPin, mismatchConfirmPin)
     }
 

@@ -106,6 +106,14 @@ fun LoginScreen(
     var isSendingPasswordReset by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
 
+    // Legacy PIN Upgrade Dialog State
+    val requiresPinUpgrade by viewModel.requiresPinUpgrade.collectAsStateWithLifecycle()
+    var upgradeNewPin by remember { mutableStateOf("") }
+    var upgradeConfirmPin by remember { mutableStateOf("") }
+    var upgradeErrorMsg by remember { mutableStateOf("") }
+    var isUpgradingPin by remember { mutableStateOf(false) }
+    var showUpgradePin by remember { mutableStateOf(false) }
+
     // Existing Shop PIN Setup via OTP State
     val pendingPinSetup by viewModel.pendingPinSetup.collectAsStateWithLifecycle()
     var otpVerificationId by remember { mutableStateOf("") }
@@ -574,7 +582,7 @@ fun LoginScreen(
                                 password = it
                                 errorMessage = ""
                             },
-                            placeholder = { Text("গোপন পাসওয়ার্ড", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text("৬-সংখ্যার পিন বা পাসওয়ার্ড", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -656,16 +664,16 @@ fun LoginScreen(
                                 .testTag("login_phone_input")
                         )
 
-                        // 4-Digit PIN Input
+                        // 4 or 6-Digit PIN Input
                         OutlinedTextField(
                             value = pin,
                             onValueChange = {
-                                if (it.length <= 4 && it.all { c -> c.isDigit() }) {
+                                if (it.length <= 6 && it.all { c -> c.isDigit() }) {
                                     pin = it
                                     errorMessage = ""
                                 }
                             },
-                            placeholder = { Text("৪-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text("৪ বা ৬-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -1463,6 +1471,135 @@ fun LoginScreen(
                     enabled = !isSendingPasswordReset
                 ) {
                     Text("বন্ধ করুন", color = Color(0xFF64748B))
+                }
+            }
+        )
+    }
+
+    // --- Legacy 4-Digit to 6-Digit PIN Upgrade Dialog ---
+    if (requiresPinUpgrade) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isUpgradingPin) {
+                    viewModel.dismissPinUpgrade()
+                    onLoginSuccess()
+                }
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "PIN Upgrade",
+                        tint = HishabpatiPurple,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "নিরাপত্তা ও ৬-সংখ্যার পিন আপগ্রেড",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = HishabpatiPurple
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "আপনার অ্যাকাউন্টটিতে পুরোনো ৪-সংখ্যার পিন ব্যবহৃত হচ্ছিল। অ্যাকাউন্টকে আধুনিক নিরাপত্তায় সুরক্ষিত করতে এবং ভবিষ্যতে সহজে জিমেইল দিয়ে সরাসরি লগইন করতে অনুগ্রহ করে আপনার পছন্দের নতুন একটি ৬-সংখ্যার পিন সেট করুন।",
+                        fontSize = 12.5.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 17.sp
+                    )
+
+                    OutlinedTextField(
+                        value = upgradeNewPin,
+                        onValueChange = {
+                            if (it.length <= 6 && it.all { c -> c.isDigit() }) {
+                                upgradeNewPin = it
+                                upgradeErrorMsg = ""
+                            }
+                        },
+                        placeholder = { Text("নতুন ৬-সংখ্যার গোপন পিন", color = Color(0xFF94A3B8)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = HishabpatiPurple)
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { showUpgradePin = !showUpgradePin }) {
+                                Icon(
+                                    imageVector = if (showUpgradePin) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    tint = Color(0xFF64748B)
+                                )
+                            }
+                        },
+                        visualTransformation = if (showUpgradePin) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("upgrade_new_pin_input")
+                    )
+
+                    OutlinedTextField(
+                        value = upgradeConfirmPin,
+                        onValueChange = {
+                            if (it.length <= 6 && it.all { c -> c.isDigit() }) {
+                                upgradeConfirmPin = it
+                                upgradeErrorMsg = ""
+                            }
+                        },
+                        placeholder = { Text("পিন পুনরায় লিখুন", color = Color(0xFF94A3B8)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.LockClock, contentDescription = null, tint = HishabpatiPurple)
+                        },
+                        visualTransformation = if (showUpgradePin) VisualTransformation.None else PasswordVisualTransformation(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("upgrade_confirm_pin_input")
+                    )
+
+                    if (upgradeErrorMsg.isNotBlank()) {
+                        Text(text = upgradeErrorMsg, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isUpgradingPin = true
+                        upgradeErrorMsg = ""
+                        viewModel.upgradeUserPin(upgradeNewPin, upgradeConfirmPin) { success, msg ->
+                            isUpgradingPin = false
+                            if (success) {
+                                onLoginSuccess()
+                            } else {
+                                upgradeErrorMsg = msg
+                            }
+                        }
+                    },
+                    enabled = !isUpgradingPin && upgradeNewPin.length == 6 && upgradeConfirmPin.length == 6,
+                    colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                    modifier = Modifier.testTag("submit_pin_upgrade_button")
+                ) {
+                    if (isUpgradingPin) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("আপগ্রেড সম্পন্ন করুন", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.dismissPinUpgrade()
+                        onLoginSuccess()
+                    },
+                    enabled = !isUpgradingPin
+                ) {
+                    Text("পরে করব", color = Color(0xFF64748B))
                 }
             }
         )

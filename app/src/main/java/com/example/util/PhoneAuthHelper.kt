@@ -208,7 +208,7 @@ object PhoneAuthHelper {
             else -> {
                 when {
                     msg.contains("app not authorized", ignoreCase = true) || msg.contains("SHA-1", ignoreCase = true) ->
-                        "অ্যাপের SHA-1 বা প্লে ইন্টিগ্রিটি কনফিগারেশন ত্রুটি। Firebase কনসোলে বর্তমান debug.keystore SHA-1 (B4:F3:6C:65:C4:65:C9:22:00:43:5D:34:5C:E4:67:DC:FA:89:F8:C5) যুক্ত আছে কিনা পরীক্ষা করুন।"
+                        "অ্যাপের SHA-1 বা প্লে ইন্টিগ্রিটি কনফিগারেশন ত্রুটি। Firebase কনসোলে বর্তমান debug.keystore SHA-1 (9C:BD:4B:DB:79:31:B1:4C:25:F5:B1:ED:E5:AE:29:BB:C1:23:C9:AB) যুক্ত আছে কিনা পরীক্ষা করুন।"
                     msg.contains("quota", ignoreCase = true) ->
                         "দৈনিক SMS কোটা পূর্ণ হয়েছে। অনুগ্রহ করে কিছু সময় পর চেষ্টা করুন অথবা Google সাইন-ইন দিয়ে তাৎক্ষণিক নিবন্ধন করুন।"
                     msg.contains("invalid phone", ignoreCase = true) ->

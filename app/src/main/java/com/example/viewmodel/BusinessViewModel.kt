@@ -373,6 +373,83 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val _pendingPinSetup = MutableStateFlow<PendingPinSetupInfo?>(null)
     val pendingPinSetup: StateFlow<PendingPinSetupInfo?> = _pendingPinSetup.asStateFlow()
 
+    // Legacy PIN Upgrade state (prompting legacy 4-digit PIN users to upgrade to 6 digits)
+    private val _requiresPinUpgrade = MutableStateFlow(false)
+    val requiresPinUpgrade: StateFlow<Boolean> = _requiresPinUpgrade.asStateFlow()
+
+    fun dismissPinUpgrade() {
+        _requiresPinUpgrade.value = false
+    }
+
+    /**
+     * Safely upgrades a user's PIN to a modern 6-digit PIN across:
+     * 1. Firebase Authentication: user.updatePassword(newPin)
+     * 2. Local Room DB: user.pinHash = repository.hashPin(newPin)
+     * 3. Remote Firestore: updates staff and business PIN hash if connected
+     */
+    fun upgradeUserPin(
+        newPin: String,
+        confirmPin: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanNew = newPin.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+            val cleanConfirm = confirmPin.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+
+            if (cleanNew.length != 6 || !cleanNew.all { it.isDigit() }) {
+                onResult(false, "নতুন পিন অবশ্যই ৬ সংখ্যার হতে হবে!")
+                return@launch
+            }
+            if (cleanNew != cleanConfirm) {
+                onResult(false, "উভয় পিন কোড একই হতে হবে!")
+                return@launch
+            }
+
+            try {
+                // 1. Update Firebase Auth Password
+                val fUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                if (fUser != null) {
+                    fUser.updatePassword(cleanNew).await()
+                    Log.i("PinUpgrade", "Firebase password successfully updated to new 6-digit PIN")
+                }
+
+                // 2. Update Local Room Database User
+                val user = _currentUser.value
+                val newHash = repository.hashPin(cleanNew)
+                if (user != null) {
+                    val updatedUser = user.copy(pinHash = newHash)
+                    repository.saveUserDirect(updatedUser)
+                    _currentUser.value = updatedUser
+                }
+
+                // 3. Update Remote Firestore if connected
+                try {
+                    val bizId = _activeBusinessId.value
+                    if (bizId.isNotBlank() && fUser != null) {
+                        val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        firestore.collection("businesses").document(bizId)
+                            .collection("staff").document(fUser.uid)
+                            .update("pinHash", newHash).await()
+                    }
+                } catch (fe: Exception) {
+                    Log.w("PinUpgrade", "Remote Firestore pin update note: ${fe.message}")
+                }
+
+                _requiresPinUpgrade.value = false
+                onResult(true, "আপনার পিন সফলভাবে ৬-সংখ্যার পিনে আপগ্রেড করা হয়েছে!")
+            } catch (e: Exception) {
+                Log.e("PinUpgrade", "Failed to upgrade PIN: ${e.message}", e)
+                onResult(false, "পিন আপগ্রেড ব্যর্থ হয়েছে: ${e.localizedMessage ?: e.message}")
+            }
+        }
+    }
+
     // App Lock PIN Verification state
     private val _isUnlocked = MutableStateFlow(true)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked.asStateFlow()
@@ -2344,6 +2421,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * Firebase Spark 100% Free: Native Email/Password Login.
+     * Supports modern 6-digit PINs, standard passwords, and seamless legacy 4-digit PIN fallback.
      */
     fun loginWithEmailPassword(
         email: String,
@@ -2353,19 +2431,50 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val cleanEmail = email.trim().lowercase()
             val cleanPass = password.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+
             if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
                 onResult(false, "সঠিক জিমেইল ঠিকানা লিখুন!", null)
                 return@launch
             }
             if (cleanPass.isBlank()) {
-                onResult(false, "পাসওয়ার্ড লিখুন!", null)
+                onResult(false, "পাসওয়ার্ড বা পিন লিখুন!", null)
                 return@launch
             }
+
             try {
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-                val authResult = auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
-                val user = authResult.user
+                var authResult: com.google.firebase.auth.AuthResult? = null
+                var usedLegacy4DigitSuffix = false
+
+                try {
+                    authResult = auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
+                } catch (initialEx: Exception) {
+                    // If the user entered a 4-digit PIN from the legacy registration system (which appended "99"),
+                    // seamlessly authenticate using "${cleanPass}99" so the user is never locked out!
+                    if (cleanPass.length == 4 && cleanPass.all { it.isDigit() } &&
+                        (initialEx is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ||
+                         initialEx.message?.contains("credential", ignoreCase = true) == true ||
+                         initialEx.message?.contains("password", ignoreCase = true) == true)) {
+                        try {
+                            authResult = auth.signInWithEmailAndPassword(cleanEmail, "${cleanPass}99").await()
+                            usedLegacy4DigitSuffix = true
+                            Log.i("Auth", "Legacy 4-digit PIN authenticated successfully with legacy suffix.")
+                        } catch (_: Exception) {
+                            throw initialEx
+                        }
+                    } else {
+                        throw initialEx
+                    }
+                }
+
+                val user = authResult?.user
                 if (user != null) {
+                    if (usedLegacy4DigitSuffix) {
+                        _requiresPinUpgrade.value = true
+                    }
                     handleGoogleUserCredentials(
                         uid = user.uid,
                         email = user.email,
@@ -2378,13 +2487,36 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (e: Exception) {
                 val err = e.localizedMessage ?: e.message ?: "লগইন ত্রুটি"
+                val errCode = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
                 val friendlyMsg = when {
-                    err.contains("no user record", ignoreCase = true) || err.contains("user-not-found", ignoreCase = true) ->
-                        "এই জিমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে নতুন একাউন্ট খুলুন।"
-                    err.contains("wrong-password", ignoreCase = true) || err.contains("invalid-credential", ignoreCase = true) ->
-                        "ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন অথবা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন।"
-                    err.contains("network error", ignoreCase = true) ->
-                        "ইন্টারনেট সংযোগ সমস্যা। অনুগ্রহ করে সংযোগ চেক করুন।"
+                    e is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ||
+                    errCode == "ERROR_INVALID_CREDENTIAL" ||
+                    errCode == "ERROR_WRONG_PASSWORD" ||
+                    err.contains("auth credential", ignoreCase = true) ||
+                    err.contains("invalid-credential", ignoreCase = true) ||
+                    err.contains("wrong-password", ignoreCase = true) -> {
+                        "পাসওয়ার্ড সঠিক নয়। দয়া করে সঠিক পাসওয়ার্ড বা পিন দিন, অথবা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করে রিসেট করুন।"
+                    }
+                    errCode == "ERROR_USER_NOT_FOUND" ||
+                    err.contains("no user record", ignoreCase = true) ||
+                    err.contains("user-not-found", ignoreCase = true) -> {
+                        "এই জিমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। ইমেইল যাচাই করুন অথবা নতুন দোকান খুলুন।"
+                    }
+                    errCode == "ERROR_INVALID_EMAIL" || err.contains("invalid-email", ignoreCase = true) -> {
+                        "ইমেইল ফরম্যাট সঠিক নয়। সঠিক জিমেইল ঠিকানা লিখুন।"
+                    }
+                    errCode == "ERROR_USER_DISABLED" || err.contains("user-disabled", ignoreCase = true) -> {
+                        "আপনার অ্যাকাউন্টটি নিষ্ক্রিয় করা হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।"
+                    }
+                    errCode == "ERROR_TOO_MANY_REQUESTS" || err.contains("too-many-requests", ignoreCase = true) -> {
+                        "অতিরিক্ত ভুল চেষ্টার কারণে সাময়িকভাবে স্থগিত। কিছুক্ষণ পর পুনরায় চেষ্টা করুন।"
+                    }
+                    e is com.google.firebase.FirebaseNetworkException || err.contains("network error", ignoreCase = true) -> {
+                        "ইন্টারনেট সংযোগ সমস্যা। আপনার ডাটা বা ওয়াইফাই চেক করে পুনরায় চেষ্টা করুন।"
+                    }
+                    err.contains("expired", ignoreCase = true) -> {
+                        "ক্রেডেনশিয়াল মেয়াদোত্তীর্ণ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।"
+                    }
                     else -> "লগইন ত্রুটি: $err"
                 }
                 onResult(false, friendlyMsg, null)
