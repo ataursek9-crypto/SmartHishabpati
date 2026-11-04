@@ -1121,8 +1121,47 @@ fun SuperAdminBusinessesTab(
                             Text(
                                 text = "মালিক: ${b.ownerName} • ${b.ownerPhone}",
                                 style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "জিমেইল: ${if (b.ownerEmail.isNotBlank()) b.ownerEmail else "সংযুক্ত নেই"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (b.ownerEmail.isNotBlank()) MaterialTheme.colorScheme.primary else Color(0xFF94A3B8)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "আইডি: ${b.id}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Surface(
+                                    color = if (b.ownerEmail.isNotBlank()) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (b.ownerEmail.isNotBlank()) "GMAIL VERIFIED" else "UNVERIFIED",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (b.ownerEmail.isNotBlank()) Color(0xFF166534) else Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (b.ownerUid.isNotBlank() && b.ownerUid != b.id) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "UID: ${b.ownerUid}",
+                                    fontSize = 10.5.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "ব্যবহৃত দিন: ${BengaliFormatter.formatNumber(b.elapsedDays)} দিন  |  সক্রিয় দিন: ${BengaliFormatter.formatNumber(b.activeDays)} দিন",

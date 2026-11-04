@@ -76,9 +76,14 @@ fun LoginScreen(
     val savedAccounts by viewModel.savedAccounts.collectAsStateWithLifecycle()
 
     // Form State
+    var loginMethodTab by remember { mutableIntStateOf(0) } // 0 = Gmail, 1 = Phone
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
     var phone by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
     var showPin by remember { mutableStateOf(false) }
+    var rememberMe by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -95,6 +100,10 @@ fun LoginScreen(
 
     // Dialogs
     var showForgotPinDialog by remember { mutableStateOf(false) }
+    var showForgotPasswordDialog by remember { mutableStateOf(false) }
+    var forgotPasswordEmailInput by remember { mutableStateOf("") }
+    var forgotPasswordStatusMsg by remember { mutableStateOf("") }
+    var isSendingPasswordReset by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
 
     // Existing Shop PIN Setup via OTP State
@@ -148,31 +157,55 @@ fun LoginScreen(
 
     // Trigger Login Action
     val triggerLogin = {
-        val trimmedPhone = phone.trim()
-            .replace('০', '0').replace('১', '1').replace('২', '2')
-            .replace('৩', '3').replace('৪', '4').replace('৫', '5')
-            .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
-        val trimmedPin = pin.trim()
-            .replace('০', '0').replace('১', '1').replace('২', '2')
-            .replace('৩', '3').replace('৪', '4').replace('৫', '5')
-            .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
-
-        if (trimmedPhone.isBlank()) {
-            errorMessage = "দয়া করে আপনার মোবাইল নম্বর লিখুন!"
-        } else if (trimmedPin.isBlank()) {
-            errorMessage = "দয়া করে আপনার ৪-সংখ্যার পিন লিখুন!"
+        if (loginMethodTab == 0) {
+            // Gmail + Password Login
+            val cleanEmail = email.trim().lowercase()
+            val cleanPass = password.trim()
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                errorMessage = "দয়া করে সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!"
+            } else if (cleanPass.isBlank()) {
+                errorMessage = "দয়া করে আপনার পাসওয়ার্ড লিখুন!"
+            } else {
+                isLoading = true
+                errorMessage = ""
+                focusManager.clearFocus()
+                viewModel.loginWithEmailPassword(cleanEmail, cleanPass) { success, msg, _ ->
+                    isLoading = false
+                    if (success) {
+                        onLoginSuccess()
+                    } else {
+                        errorMessage = msg
+                    }
+                }
+            }
         } else {
-            isLoading = true
-            errorMessage = ""
-            focusManager.clearFocus()
+            // Phone + PIN Login
+            val trimmedPhone = phone.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+            val trimmedPin = pin.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
 
-            viewModel.login(trimmedPhone, trimmedPin) { success, msg ->
-                isLoading = false
-                if (success) {
-                    viewModel.saveRememberedPhone(trimmedPhone)
-                    onLoginSuccess()
-                } else {
-                    errorMessage = msg
+            if (trimmedPhone.isBlank()) {
+                errorMessage = "দয়া করে আপনার মোবাইল নম্বর লিখুন!"
+            } else if (trimmedPin.isBlank()) {
+                errorMessage = "দয়া করে আপনার ৪-সংখ্যার পিন লিখুন!"
+            } else {
+                isLoading = true
+                errorMessage = ""
+                focusManager.clearFocus()
+
+                viewModel.login(trimmedPhone, trimmedPin) { success, msg ->
+                    isLoading = false
+                    if (success) {
+                        viewModel.saveRememberedPhone(trimmedPhone)
+                        onLoginSuccess()
+                    } else {
+                        errorMessage = msg
+                    }
                 }
             }
         }
@@ -416,7 +449,82 @@ fun LoginScreen(
             }
 
             // =================================================================
-            // 4. LOGIN FORM CARD (Mobile, PIN, Login Button)
+            // 4. DUAL TAB SELECTOR: Gmail | Phone (Matching Modern Auth UI)
+            // =================================================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFEDE9FE)),
+                border = BorderStroke(1.dp, Color(0xFFDDD6FE))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (loginMethodTab == 0) Color.White else Color.Transparent)
+                            .clickable {
+                                loginMethodTab = 0
+                                errorMessage = ""
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = if (loginMethodTab == 0) HishabpatiPurple else Color(0xFF64748B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Gmail লগইন",
+                                fontWeight = if (loginMethodTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                color = if (loginMethodTab == 0) HishabpatiPurple else Color(0xFF64748B),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (loginMethodTab == 1) Color.White else Color.Transparent)
+                            .clickable {
+                                loginMethodTab = 1
+                                errorMessage = ""
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.PhoneAndroid,
+                                contentDescription = null,
+                                tint = if (loginMethodTab == 1) HishabpatiPurple else Color(0xFF64748B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "ফোন লগইন",
+                                fontWeight = if (loginMethodTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                color = if (loginMethodTab == 1) HishabpatiPurple else Color(0xFF64748B),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // =================================================================
+            // 4. LOGIN FORM CARD (Gmail or Phone Form)
             // =================================================================
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -429,84 +537,219 @@ fun LoginScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Mobile Number Input
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = {
-                            phone = it
-                            errorMessage = ""
-                        },
-                        placeholder = { Text("মোবাইল নম্বর", color = Color(0xFF94A3B8)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.PhoneAndroid,
-                                contentDescription = null,
-                                tint = Color(0xFF64748B)
-                            )
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedBorderColor = HishabpatiPurple,
-                            unfocusedBorderColor = Color(0xFFCBD5E1)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("login_phone_input")
-                    )
-
-                    // 4-Digit PIN Input
-                    OutlinedTextField(
-                        value = pin,
-                        onValueChange = {
-                            if (it.length <= 4 && it.all { c -> c.isDigit() }) {
-                                pin = it
+                    if (loginMethodTab == 0) {
+                        // Gmail Address Input
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = {
+                                email = it
                                 errorMessage = ""
-                            }
-                        },
-                        placeholder = { Text("৪-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = Color(0xFF64748B)
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(
-                                onClick = { showPin = !showPin },
-                                modifier = Modifier.testTag("login_pin_toggle")
-                            ) {
+                            },
+                            placeholder = { Text("আপনার নিবন্ধিত Gmail ঠিকানা", color = Color(0xFF94A3B8)) },
+                            leadingIcon = {
                                 Icon(
-                                    imageVector = if (showPin) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    imageVector = Icons.Default.Email,
                                     contentDescription = null,
                                     tint = Color(0xFF64748B)
                                 )
-                            }
-                        },
-                        visualTransformation = if (showPin) VisualTransformation.None else PasswordVisualTransformation(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { triggerLogin() }),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedBorderColor = HishabpatiPurple,
-                            unfocusedBorderColor = Color(0xFFCBD5E1)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("login_pin_input")
-                    )
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = HishabpatiPurple,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_email_input")
+                        )
 
-                    // Large Purple Login Button (Matching Reference)
+                        // Password Input
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = {
+                                password = it
+                                errorMessage = ""
+                            },
+                            placeholder = { Text("গোপন পাসওয়ার্ড", color = Color(0xFF94A3B8)) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFF64748B)
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showPassword = !showPassword },
+                                    modifier = Modifier.testTag("login_password_toggle")
+                                ) {
+                                    Icon(
+                                        imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B)
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { triggerLogin() }),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = HishabpatiPurple,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_password_input")
+                        )
+                    } else {
+                        // Phone Tab Info Banner
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "পুরোনো দোকান বা সংরক্ষিত অফলাইন পিনের জন্য ফোন নম্বর ও পিন ব্যবহার করুন।",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF92400E),
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+
+                        // Mobile Number Input
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = {
+                                phone = it
+                                errorMessage = ""
+                            },
+                            placeholder = { Text("মোবাইল নম্বর", color = Color(0xFF94A3B8)) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.PhoneAndroid,
+                                    contentDescription = null,
+                                    tint = Color(0xFF64748B)
+                                )
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = HishabpatiPurple,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_phone_input")
+                        )
+
+                        // 4-Digit PIN Input
+                        OutlinedTextField(
+                            value = pin,
+                            onValueChange = {
+                                if (it.length <= 4 && it.all { c -> c.isDigit() }) {
+                                    pin = it
+                                    errorMessage = ""
+                                }
+                            },
+                            placeholder = { Text("৪-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFF64748B)
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showPin = !showPin },
+                                    modifier = Modifier.testTag("login_pin_toggle")
+                                ) {
+                                    Icon(
+                                        imageVector = if (showPin) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B)
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showPin) VisualTransformation.None else PasswordVisualTransformation(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { triggerLogin() }),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = HishabpatiPurple,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_pin_input")
+                        )
+                    }
+
+                    // Remember Me & Forgot Password Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { rememberMe = !rememberMe }
+                        ) {
+                            Checkbox(
+                                checked = rememberMe,
+                                onCheckedChange = { rememberMe = it },
+                                colors = CheckboxDefaults.colors(checkedColor = HishabpatiPurple),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "মনে রাখুন",
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569)
+                            )
+                        }
+
+                        Text(
+                            text = if (loginMethodTab == 0) "পাসওয়ার্ড ভুলে গেছেন?" else "পিন ভুলে গেছেন?",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = HishabpatiPurple,
+                            modifier = Modifier.clickable {
+                                if (loginMethodTab == 0) {
+                                    forgotPasswordEmailInput = email.ifBlank { "" }
+                                    forgotPasswordStatusMsg = ""
+                                    showForgotPasswordDialog = true
+                                } else {
+                                    showForgotPinDialog = true
+                                }
+                            }
+                        )
+                    }
+
+                    // Large Purple Login Button
                     Button(
                         onClick = triggerLogin,
-                        enabled = !isLoading && phone.isNotBlank() && pin.isNotBlank(),
+                        enabled = !isLoading && (
+                            (loginMethodTab == 0 && email.isNotBlank() && password.isNotBlank()) ||
+                            (loginMethodTab == 1 && phone.isNotBlank() && pin.isNotBlank())
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
@@ -1132,6 +1375,94 @@ fun LoginScreen(
             dismissButton = {
                 TextButton(onClick = { pendingGoogleUser = null }) {
                     Text("বাতিল", color = Color(0xFF64748B))
+                }
+            }
+        )
+    }
+
+    // --- Forgot Password Dialog (Gmail Firebase Password Reset) ---
+    if (showForgotPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isSendingPasswordReset) showForgotPasswordDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LockReset,
+                        contentDescription = "Password Reset",
+                        tint = HishabpatiPurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "পাসওয়ার্ড রিসেট করুন",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = HishabpatiPurple
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "আপনার একাউন্টে নিবন্ধিত Gmail ঠিকানাটি লিখুন। আমরা আপনাকে একটি অফিসিয়াল পাসওয়ার্ড রিসেট লিংক পাঠাব।",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 18.sp
+                    )
+
+                    OutlinedTextField(
+                        value = forgotPasswordEmailInput,
+                        onValueChange = {
+                            forgotPasswordEmailInput = it
+                            forgotPasswordStatusMsg = ""
+                        },
+                        placeholder = { Text("নিবন্ধিত Gmail ঠিকানা", color = Color(0xFF94A3B8)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF64748B))
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("forgot_password_email_input")
+                    )
+
+                    if (forgotPasswordStatusMsg.isNotBlank()) {
+                        Text(
+                            text = forgotPasswordStatusMsg,
+                            color = if (forgotPasswordStatusMsg.contains("পাঠানো হয়েছে")) Color(0xFF16A34A) else MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isSendingPasswordReset = true
+                        forgotPasswordStatusMsg = ""
+                        viewModel.sendPasswordResetEmail(forgotPasswordEmailInput) { success, msg ->
+                            isSendingPasswordReset = false
+                            forgotPasswordStatusMsg = msg
+                        }
+                    },
+                    enabled = !isSendingPasswordReset && forgotPasswordEmailInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                    modifier = Modifier.testTag("send_password_reset_button")
+                ) {
+                    if (isSendingPasswordReset) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("রিসেট লিংক পাঠান", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showForgotPasswordDialog = false },
+                    enabled = !isSendingPasswordReset
+                ) {
+                    Text("বন্ধ করুন", color = Color(0xFF64748B))
                 }
             }
         )

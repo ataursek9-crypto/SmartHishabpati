@@ -2249,6 +2249,179 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Firebase Spark 100% Free: Native Email/Password Registration.
+     * Creates Firebase Auth user and sends official verification email.
+     * Does NOT create active shop ownership in Firestore until email is verified.
+     */
+    fun registerWithEmailPassword(
+        email: String,
+        password: String,
+        onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            val cleanPass = password.trim()
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                onResult(false, "সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!", null)
+                return@launch
+            }
+            if (cleanPass.length < 6) {
+                onResult(false, "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে!", null)
+                return@launch
+            }
+            try {
+                val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                val authResult = auth.createUserWithEmailAndPassword(cleanEmail, cleanPass).await()
+                val user = authResult.user
+                if (user != null) {
+                    try {
+                        user.sendEmailVerification().await()
+                    } catch (e: Exception) {
+                        Log.w("EmailAuth", "Email verification send note: ${e.message}")
+                    }
+                    onResult(true, "আপনার জিমেইলে (${cleanEmail}) ভেরিফিকেশন লিঙ্ক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স চেক করে লিঙ্কটি নিশ্চিত করুন।", user)
+                } else {
+                    onResult(false, "ইউজার একাউন্ট তৈরি করা যায়নি। পুনরায় চেষ্টা করুন।", null)
+                }
+            } catch (e: Exception) {
+                val err = e.localizedMessage ?: e.message ?: "রেজিস্ট্রেশন ত্রুটি"
+                val friendlyMsg = when {
+                    err.contains("already in use", ignoreCase = true) -> "এই জিমেইল দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে। দয়া করে লগইন করুন।"
+                    err.contains("badly formatted", ignoreCase = true) -> "ইমেইল ফরম্যাট সঠিক নয়।"
+                    err.contains("network error", ignoreCase = true) -> "ইন্টারনেট সংযোগ সমস্যা। আপনার ডাটা বা ওয়াইফাই চেক করুন।"
+                    else -> "রেজিস্ট্রেশন ব্যর্থ: $err"
+                }
+                onResult(false, friendlyMsg, null)
+            }
+        }
+    }
+
+    /**
+     * Checks if current Firebase user has verified their email address.
+     */
+    fun checkEmailVerificationStatus(
+        onResult: (Boolean, Boolean, String) -> Unit // isSuccess, isVerified, message
+    ) {
+        viewModelScope.launch {
+            try {
+                val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                if (user == null) {
+                    onResult(false, false, "কোনো সক্রিয় সেশন পাওয়া যায়নি।")
+                    return@launch
+                }
+                user.reload().await()
+                if (user.isEmailVerified) {
+                    onResult(true, true, "ইমেইল সফলভাবে ভেরিফাইড হয়েছে!")
+                } else {
+                    onResult(true, false, "ইমেইল এখনও ভেরিফাই করা হয়নি। অনুগ্রহ করে ইনবক্সের লিংকে ক্লিক করুন।")
+                }
+            } catch (e: Exception) {
+                onResult(false, false, e.localizedMessage ?: "ভেরিফিকেশন স্ট্যাটাস যাচাই ব্যর্থ")
+            }
+        }
+    }
+
+    /**
+     * Resends verification email to the current authenticated user.
+     */
+    fun resendVerificationEmail(
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                if (user != null) {
+                    user.sendEmailVerification().await()
+                    onResult(true, "আপনার জিমেইলে পুনরায় ভেরিফিকেশন লিংক পাঠানো হয়েছে।")
+                } else {
+                    onResult(false, "ব্যবহারকারী খুঁজে পাওয়া যায়নি।")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "লিংক পাঠানো যায়নি।")
+            }
+        }
+    }
+
+    /**
+     * Firebase Spark 100% Free: Native Email/Password Login.
+     */
+    fun loginWithEmailPassword(
+        email: String,
+        password: String,
+        onResult: (Boolean, String, UserRole?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            val cleanPass = password.trim()
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                onResult(false, "সঠিক জিমেইল ঠিকানা লিখুন!", null)
+                return@launch
+            }
+            if (cleanPass.isBlank()) {
+                onResult(false, "পাসওয়ার্ড লিখুন!", null)
+                return@launch
+            }
+            try {
+                val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                val authResult = auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
+                val user = authResult.user
+                if (user != null) {
+                    handleGoogleUserCredentials(
+                        uid = user.uid,
+                        email = user.email,
+                        displayName = user.displayName,
+                        phoneNumber = user.phoneNumber,
+                        onResult = onResult
+                    )
+                } else {
+                    onResult(false, "লগইন ব্যর্থ হয়েছে। তথ্য যাচাই করুন।", null)
+                }
+            } catch (e: Exception) {
+                val err = e.localizedMessage ?: e.message ?: "লগইন ত্রুটি"
+                val friendlyMsg = when {
+                    err.contains("no user record", ignoreCase = true) || err.contains("user-not-found", ignoreCase = true) ->
+                        "এই জিমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে নতুন একাউন্ট খুলুন।"
+                    err.contains("wrong-password", ignoreCase = true) || err.contains("invalid-credential", ignoreCase = true) ->
+                        "ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন অথবা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন।"
+                    err.contains("network error", ignoreCase = true) ->
+                        "ইন্টারনেট সংযোগ সমস্যা। অনুগ্রহ করে সংযোগ চেক করুন।"
+                    else -> "লগইন ত্রুটি: $err"
+                }
+                onResult(false, friendlyMsg, null)
+            }
+        }
+    }
+
+    /**
+     * Firebase Spark 100% Free: Official Password Reset Email.
+     */
+    fun sendPasswordResetEmail(
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+                onResult(false, "অনুগ্রহ করে আপনার সঠিক নিবন্ধিত জিমেইল লিখুন!")
+                return@launch
+            }
+            try {
+                val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                auth.sendPasswordResetEmail(cleanEmail).await()
+                onResult(true, "আপনার জিমেইলে (${cleanEmail}) পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স বা স্প্যাম ফোল্ডার চেক করুন।")
+            } catch (e: Exception) {
+                val err = e.localizedMessage ?: e.message ?: "ত্রুটি"
+                val friendlyMsg = when {
+                    err.contains("user-not-found", ignoreCase = true) -> "এই জিমেইলে কোনো নিবন্ধিত অ্যাকাউন্ট নেই।"
+                    err.contains("invalid-email", ignoreCase = true) -> "ইমেইল ফরম্যাট সঠিক নয়।"
+                    else -> "পাসওয়ার্ড রিসেট লিংক পাঠানো যায়নি: $err"
+                }
+                onResult(false, friendlyMsg)
+            }
+        }
+    }
+
+    /**
      * Securely links an authenticated Google account to an existing registered staff/admin profile
      * after local PIN verification.
      */

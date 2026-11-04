@@ -181,87 +181,51 @@ fun ShopRegistrationScreen(
         "$firstName $lastName".trim()
     }
 
-    // --- Action: Send Real Firebase Phone OTP ---
+    // --- Action: Send Verification or Create Firebase User ---
     val triggerSendOtp: () -> Unit = {
         errorMessage = ""
         focusManager.clearFocus()
 
-        val cleanPhone = PhoneAuthHelper.normalizeToE164(phone)
-        if (!PhoneAuthHelper.isValidBangladeshPhone(cleanPhone)) {
-            errorMessage = "সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!"
-        } else if (pin.length != 4 || !pin.all { it.isDigit() }) {
-            errorMessage = "অনুগ্রহ করে ৪ সংখ্যার গোপন পিন দিন!"
+        val cleanEmail = email.trim().lowercase()
+        val cleanPhone = phone.trim()
+
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            errorMessage = "দয়া করে আপনার সঠিক জিমেইল / ইমেইল ঠিকানা দিন!"
+        } else if (cleanPhone.length < 11) {
+            errorMessage = "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!"
+        } else if (pin.length < 4) {
+            errorMessage = "অনুগ্রহ করে কমপক্ষে ৪ সংখ্যার গোপন পিন বা পাসওয়ার্ড দিন!"
         } else if (pin != confirmPin) {
             errorMessage = "পিন এবং পিন নিশ্চিতকরণ মিলছে না!"
         } else {
             isSendingOtp = true
-            if (activity != null) {
-                PhoneAuthHelper.sendVerificationCode(
-                    activity = activity,
-                    phone = cleanPhone,
-                    forceResendingToken = resendToken,
-                    onCodeSent = { vId, token ->
-                        isSendingOtp = false
-                        verificationId = vId
-                        resendToken = token
-                        countdownSeconds = 60
-                        otpDigits = List(6) { "" }
-                        currentStep = RegistrationStep.STEP_4_VERIFICATION
-                    },
-                    onAutoVerified = { user ->
-                        isSendingOtp = false
-                        authenticatedUser = user
-                        // Auto-create shop directly if Google Play Services auto-verified SMS
-                        coroutineScope.launch {
-                            viewModel.registerNewShop(
-                                shopName = shopName.trim(),
-                                ownerName = fullOwnerName,
-                                phone = phone.trim(),
-                                address = address.ifBlank { district },
-                                district = district,
-                                businessType = selectedBusinessType,
-                                pin = pin.trim(),
-                                isPhoneVerified = true,
-                                ownerEmail = email.trim(),
-                                ownerUid = user.uid,
-                                superAdminViewModel = superAdminViewModel
-                            ) { success, msg, shopId ->
-                                if (success && shopId != null) {
-                                    successRegisteredShopId = shopId
-                                } else {
-                                    errorMessage = msg
-                                }
-                            }
-                        }
-                    },
-                    onError = { err ->
-                        isSendingOtp = false
-                        errorMessage = err
-                        // If phone provider has region issue or testing, still allow user to step forward with clear notification
-                        if (PhoneAuthHelper.isProviderOrSmsRegionDisabledMessage(err)) {
-                            countdownSeconds = 60
-                            currentStep = RegistrationStep.STEP_4_VERIFICATION
-                        }
-                    }
-                )
-            } else {
+            // If user chose Gmail verification, create Firebase user & send real link
+            val registrationPassword = if (pin.length >= 6) pin else "${pin}99"
+            viewModel.registerWithEmailPassword(cleanEmail, registrationPassword) { success, msg, user ->
                 isSendingOtp = false
-                currentStep = RegistrationStep.STEP_4_VERIFICATION
+                if (success && user != null) {
+                    authenticatedUser = user
+                    countdownSeconds = 60
+                    currentStep = RegistrationStep.STEP_4_VERIFICATION
+                } else {
+                    errorMessage = msg
+                }
             }
         }
     }
 
-    // --- Action: Verify Code & Complete Registration ---
+    // --- Action: Check Real Email Verification & Complete Shop Registration ---
     val triggerVerifyAndRegister: () -> Unit = {
         errorMessage = ""
-        val enteredCode = otpDigits.joinToString("").trim()
-        if (enteredCode.length != 6 || !enteredCode.all { it.isDigit() }) {
-            errorMessage = "অনুগ্রহ করে সম্পূর্ণ ৬ ডিজিটের যাচাই কোড লিখুন!"
-        } else {
-            isVerifyingOtp = true
-            focusManager.clearFocus()
+        isVerifyingOtp = true
+        focusManager.clearFocus()
 
-            val completeShopRegistration: (uid: String, isVerified: Boolean) -> Unit = { authUid, phoneVerified ->
+        // Enforce REAL Firebase verification check
+        viewModel.checkEmailVerificationStatus { isSuccess, isVerified, msg ->
+            if (isVerified) {
+                val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: authenticatedUser?.uid ?: ""
+                val currentEmail = FirebaseAuth.getInstance().currentUser?.email ?: email.trim().lowercase()
+
                 coroutineScope.launch {
                     viewModel.registerNewShop(
                         shopName = shopName.trim(),
@@ -271,38 +235,22 @@ fun ShopRegistrationScreen(
                         district = district,
                         businessType = selectedBusinessType,
                         pin = pin.trim(),
-                        isPhoneVerified = phoneVerified,
-                        ownerEmail = email.trim(),
-                        ownerUid = authUid,
+                        isPhoneVerified = false, // Phone SMS unverified as billing is disabled
+                        ownerEmail = currentEmail,
+                        ownerUid = currentUid,
                         superAdminViewModel = superAdminViewModel
-                    ) { success, msg, shopId ->
+                    ) { regSuccess, regMsg, shopId ->
                         isVerifyingOtp = false
-                        if (success && shopId != null) {
+                        if (regSuccess && shopId != null) {
                             successRegisteredShopId = shopId
                         } else {
-                            errorMessage = msg
+                            errorMessage = regMsg
                         }
                     }
                 }
-            }
-
-            if (verificationId.isNotBlank()) {
-                PhoneAuthHelper.verifyCodeAndSignIn(
-                    verificationId = verificationId,
-                    code = enteredCode,
-                    onSuccess = { user ->
-                        authenticatedUser = user
-                        completeShopRegistration(user.uid, true)
-                    },
-                    onError = { err ->
-                        isVerifyingOtp = false
-                        errorMessage = err
-                    }
-                )
             } else {
-                // If SMS OTP was simulated/skipped due to SMS region settings, proceed with safe authentication registration
-                val fallbackUid = FirebaseAuth.getInstance().currentUser?.uid ?: "user_${System.currentTimeMillis()}"
-                completeShopRegistration(fallbackUid, true)
+                isVerifyingOtp = false
+                errorMessage = "আপনার জিমেইল (${email.trim()}) এখনও যাচাই করা হয়নি! দয়া করে আপনার জিমেইলে আসা লিংকে ক্লিক করে 'যাচাই সম্পন্ন করেছি' বাটনে চাপুন।"
             }
         }
     }
@@ -989,8 +937,20 @@ fun ShopRegistrationScreen(
                             Spacer(modifier = Modifier.height(14.dp))
 
                             Text(
-                                text = if (verificationMethodTab == 1) "ফোনে পাঠানো ৬ ডিজিটের কোড লিখুন।" else "ইমেইলে পাঠানো ৬ ডিজিটের কোড লিখুন।",
-                                fontSize = 13.sp,
+                                text = "আপনার জিমেইলে (${email.trim()}) একটি অফিশিয়াল ভেরিফিকেশন লিঙ্ক পাঠানো হয়েছে।",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = HishabpatiTextDark,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Start
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "১. আপনার জিমেইল অ্যাপ বা ব্রাউজার খুলুন।\n২. গুগল থেকে আসা 'Verify your email' লিংকে ক্লিক করুন।\n৩. তারপর নিচের 'যাচাই সম্পন্ন করেছি' বাটনে চাপ দিন।",
+                                fontSize = 12.5.sp,
+                                lineHeight = 18.sp,
                                 color = Color(0xFF4A5568),
                                 modifier = Modifier.fillMaxWidth(),
                                 textAlign = TextAlign.Start
@@ -998,66 +958,17 @@ fun ShopRegistrationScreen(
 
                             Spacer(modifier = Modifier.height(18.dp))
 
-                            // 6 Separate OTP Boxes (Matching Screenshot 4)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                for (i in 0 until 6) {
-                                    val digit = otpDigits.getOrNull(i) ?: ""
-                                    val isFocused = otpDigits.indexOfFirst { it.isEmpty() }.let { if (it == -1) 5 else it } == i
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(width = 46.dp, height = 54.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.White)
-                                            .border(
-                                                width = if (isFocused) 2.dp else 1.dp,
-                                                color = if (isFocused) HishabpatiPurple else Color(0xFFCBD5E1),
-                                                shape = RoundedCornerShape(12.dp)
-                                            )
-                                            .testTag("reg_step4_otp_box_$i"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = toBengaliDigits(digit),
-                                            fontSize = 20.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = HishabpatiPurple
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Invisible Real TextField to capture 6-digit input seamlessly
-                            BasicTextField(
-                                value = otpDigits.joinToString(""),
-                                onValueChange = { input ->
-                                    val clean = input.filter { it.isDigit() }.take(6)
-                                    otpDigits = List(6) { idx -> if (idx < clean.length) clean[idx].toString() else "" }
-                                    errorMessage = ""
-                                },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(0.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Resend Countdown Timer (Matching Screenshot 4)
+                            // Resend Countdown Timer
                             if (countdownSeconds > 0) {
                                 Text(
-                                    text = "${formatTimerBengali(countdownSeconds)} সেকেন্ড পরে আবার চেষ্টা করুন",
+                                    text = "${formatTimerBengali(countdownSeconds)} সেকেন্ড পরে আবার লিংক পাঠানো যাবে",
                                     color = HishabpatiPurple,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             } else {
                                 Text(
-                                    text = "পুনরায় কোড পাঠান",
+                                    text = "পুনরায় ভেরিফিকেশন লিংক পাঠান",
                                     color = HishabpatiPurple,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
@@ -1065,7 +976,13 @@ fun ShopRegistrationScreen(
                                     modifier = Modifier
                                         .clickable {
                                             countdownSeconds = 60
-                                            triggerSendOtp()
+                                            viewModel.resendVerificationEmail { success, msg ->
+                                                if (success) {
+                                                    errorMessage = ""
+                                                } else {
+                                                    errorMessage = msg
+                                                }
+                                            }
                                         }
                                         .padding(4.dp)
                                         .testTag("reg_resend_otp_button")
@@ -1092,7 +1009,7 @@ fun ShopRegistrationScreen(
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                         } else {
                             Text(
-                                text = "যাচাই করুন",
+                                text = "যাচাই সম্পন্ন করেছি — দোকান খুলুন",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
