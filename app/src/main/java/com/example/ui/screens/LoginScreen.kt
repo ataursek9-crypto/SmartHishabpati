@@ -74,6 +74,8 @@ fun LoginScreen(
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val savedAccounts by viewModel.savedAccounts.collectAsStateWithLifecycle()
+    val rememberedEmail by viewModel.rememberedEmail.collectAsStateWithLifecycle()
+    val savedRememberMe by viewModel.rememberMeState.collectAsStateWithLifecycle()
 
     // Form State
     var loginMethodTab by remember { mutableIntStateOf(0) } // 0 = Gmail, 1 = Phone
@@ -83,7 +85,7 @@ fun LoginScreen(
     var phone by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
     var showPin by remember { mutableStateOf(false) }
-    var rememberMe by remember { mutableStateOf(true) }
+    var rememberMe by remember(savedRememberMe) { mutableStateOf(savedRememberMe) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -124,6 +126,13 @@ fun LoginScreen(
     var isVerifyingOtpAndPin by remember { mutableStateOf(false) }
     var pinSetupErrorMessage by remember { mutableStateOf("") }
     var otpSentSuccess by remember { mutableStateOf(false) }
+
+    // Auto-fill email from remembered email if empty
+    LaunchedEffect(rememberedEmail) {
+        if (email.isBlank() && rememberedEmail.isNotBlank()) {
+            email = rememberedEmail
+        }
+    }
 
     // Auto-fill phone from last remembered account if empty
     LaunchedEffect(savedAccounts) {
@@ -180,6 +189,12 @@ fun LoginScreen(
                 viewModel.loginWithEmailPassword(cleanEmail, cleanPass) { success, msg, _ ->
                     isLoading = false
                     if (success) {
+                        viewModel.setRememberMePreference(rememberMe)
+                        if (rememberMe) {
+                            viewModel.saveRememberedEmail(cleanEmail)
+                        } else {
+                            viewModel.clearRememberedEmail()
+                        }
                         onLoginSuccess()
                     } else {
                         errorMessage = msg
@@ -209,7 +224,12 @@ fun LoginScreen(
                 viewModel.login(trimmedPhone, trimmedPin) { success, msg ->
                     isLoading = false
                     if (success) {
-                        viewModel.saveRememberedPhone(trimmedPhone)
+                        viewModel.setRememberMePreference(rememberMe)
+                        if (rememberMe) {
+                            viewModel.saveRememberedPhone(trimmedPhone)
+                        } else {
+                            viewModel.removeRememberedPhone(trimmedPhone)
+                        }
                         onLoginSuccess()
                     } else {
                         errorMessage = msg
@@ -718,11 +738,18 @@ fun LoginScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { rememberMe = !rememberMe }
+                            modifier = Modifier.clickable {
+                                val next = !rememberMe
+                                rememberMe = next
+                                viewModel.setRememberMePreference(next)
+                            }
                         ) {
                             Checkbox(
                                 checked = rememberMe,
-                                onCheckedChange = { rememberMe = it },
+                                onCheckedChange = {
+                                    rememberMe = it
+                                    viewModel.setRememberMePreference(it)
+                                },
                                 colors = CheckboxDefaults.colors(checkedColor = HishabpatiPurple),
                                 modifier = Modifier.size(24.dp)
                             )

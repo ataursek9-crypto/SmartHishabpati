@@ -51,6 +51,16 @@ class SavedAccountManager(context: Context) {
     private val _savedAccounts = MutableStateFlow<List<SavedAccount>>(loadAccounts())
     val savedAccounts: StateFlow<List<SavedAccount>> = _savedAccounts.asStateFlow()
 
+    private val _rememberedEmail = MutableStateFlow(
+        prefs.getString(KEY_REMEMBERED_EMAIL, "") ?: ""
+    )
+    val rememberedEmail: StateFlow<String> = _rememberedEmail.asStateFlow()
+
+    private val _rememberMeState = MutableStateFlow(
+        prefs.getBoolean(KEY_REMEMBER_ME, true)
+    )
+    val rememberMeState: StateFlow<Boolean> = _rememberMeState.asStateFlow()
+
     private val _rememberOnLogout = MutableStateFlow(
         prefs.getBoolean(KEY_KEEP_ON_LOGOUT, true)
     )
@@ -117,6 +127,47 @@ class SavedAccountManager(context: Context) {
     }
 
     /**
+     * Save remembered email address.
+     */
+    fun saveEmail(email: String) {
+        val clean = email.trim()
+        if (clean.isBlank()) return
+        prefs.edit()
+            .putString(KEY_REMEMBERED_EMAIL, clean)
+            .putBoolean(KEY_REMEMBER_ME, true)
+            .apply()
+        _rememberedEmail.value = clean
+        _rememberMeState.value = true
+    }
+
+    /**
+     * Clear remembered email address.
+     */
+    fun clearRememberedEmail() {
+        prefs.edit().remove(KEY_REMEMBERED_EMAIL).apply()
+        _rememberedEmail.value = ""
+    }
+
+    fun getRememberedEmail(): String {
+        return _rememberedEmail.value
+    }
+
+    /**
+     * Update Remember Me checkbox preference state.
+     */
+    fun setRememberMe(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_REMEMBER_ME, enabled).apply()
+        _rememberMeState.value = enabled
+        if (!enabled) {
+            clearRememberedEmail()
+        }
+    }
+
+    fun isRememberMeEnabled(): Boolean {
+        return _rememberMeState.value
+    }
+
+    /**
      * Set user preference on whether to keep remembered numbers after logout.
      */
     fun setKeepOnLogout(keep: Boolean) {
@@ -127,6 +178,7 @@ class SavedAccountManager(context: Context) {
     /**
      * Called on user logout. If user chose not to keep remembered numbers on logout,
      * they are cleared.
+     * Note: Remembered Email behavior is distinct from phone number wipe on logout.
      */
     fun handleLogout() {
         if (!_rememberOnLogout.value) {
@@ -138,6 +190,8 @@ class SavedAccountManager(context: Context) {
         private const val PREFS_NAME = "smart_biz_saved_accounts_prefs"
         private const val KEY_SAVED_ACCOUNTS = "saved_accounts_json"
         private const val KEY_KEEP_ON_LOGOUT = "keep_accounts_on_logout"
+        private const val KEY_REMEMBERED_EMAIL = "remembered_email"
+        private const val KEY_REMEMBER_ME = "remember_me_state"
 
         @Volatile
         private var INSTANCE: SavedAccountManager? = null

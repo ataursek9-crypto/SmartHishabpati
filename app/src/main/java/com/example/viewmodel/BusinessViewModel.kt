@@ -74,6 +74,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     val savedAccountManager = SavedAccountManager.getInstance(application)
     val savedAccounts: StateFlow<List<SavedAccount>> = savedAccountManager.savedAccounts
     val keepAccountsOnLogout: StateFlow<Boolean> = savedAccountManager.keepOnLogout
+    val rememberedEmail: StateFlow<String> = savedAccountManager.rememberedEmail
+    val rememberMeState: StateFlow<Boolean> = savedAccountManager.rememberMeState
 
     val syncManager = com.example.data.sync.CloudSyncManager(application, repository.getDbInstance())
     val syncState: StateFlow<com.example.data.sync.SyncState> = syncManager.syncState
@@ -2677,7 +2679,19 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Saved Account Operations
+    // Saved Account & Remember Me Operations
+    fun saveRememberedEmail(email: String) {
+        savedAccountManager.saveEmail(email)
+    }
+
+    fun clearRememberedEmail() {
+        savedAccountManager.clearRememberedEmail()
+    }
+
+    fun setRememberMePreference(enabled: Boolean) {
+        savedAccountManager.setRememberMe(enabled)
+    }
+
     fun saveRememberedPhone(phone: String) {
         savedAccountManager.saveAccount(phone)
     }
