@@ -2526,31 +2526,99 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Firebase Spark 100% Free: Official Password Reset Email.
+     * Firebase Password Reset with Account Provider Detection.
+     * Accurately distinguishes Google-only accounts from Email/Password accounts,
+     * guides Google users to 1-click Google Sign-In, and returns compliant acceptance status.
      */
     fun sendPasswordResetEmail(
         email: String,
         onResult: (Boolean, String) -> Unit
     ) {
+        sendPasswordResetEmail(email) { success, _, msg ->
+            onResult(success, msg)
+        }
+    }
+
+    fun sendPasswordResetEmail(
+        email: String,
+        onResult: (isSuccess: Boolean, isGoogleOnly: Boolean, message: String) -> Unit
+    ) {
         viewModelScope.launch {
             val cleanEmail = email.trim().lowercase()
             if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-                onResult(false, "অনুগ্রহ করে আপনার সঠিক নিবন্ধিত জিমেইল লিখুন!")
+                val invalidMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
+                    "Problem: Invalid email format.\nWhat to do: Please enter a valid Gmail address (e.g. user@gmail.com)."
+                } else {
+                    "সমস্যা: ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।\nকরণীয়: অনুগ্রহ করে সঠিক জিমেইল লিখুন (যেমন: user@gmail.com)।"
+                }
+                onResult(false, false, invalidMsg)
                 return@launch
             }
+
             try {
                 FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-                auth.sendPasswordResetEmail(cleanEmail).await()
-                val successMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
-                    "A password reset link has been sent to your Gmail (${cleanEmail}). Please check your inbox or spam folder."
-                } else {
-                    "আপনার জিমেইলে (${cleanEmail}) পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স বা স্প্যাম ফোল্ডার চেক করুন।"
+
+                // Step 1: Detect sign-in methods registered in Firebase Auth
+                val signInMethods = try {
+                    auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods ?: emptyList()
+                } catch (e: Exception) {
+                    Log.w("PasswordReset", "fetchSignInMethodsForEmail note: ${e.message}")
+                    emptyList<String>()
                 }
-                onResult(true, successMsg)
+
+                // Step 2: Check Firestore & local persistence for Google-only origin
+                var registeredWithGoogleInCloud = false
+                try {
+                    val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    val snap = firestore.collection("businesses")
+                        .whereEqualTo("ownerEmail", cleanEmail)
+                        .limit(2)
+                        .get()
+                        .await()
+                    registeredWithGoogleInCloud = snap.documents.any { doc ->
+                        val authProvider = doc.getString("authProvider") ?: ""
+                        authProvider.contains("google", ignoreCase = true)
+                    }
+                } catch (_: Exception) {
+                    // Safe network fallback
+                }
+
+                val storedGoogleEmail = CloudBusinessAuth.getStoredGoogleEmail(getApplication())
+                val isStoredGoogleAccount = storedGoogleEmail.isNotBlank() && storedGoogleEmail.equals(cleanEmail, ignoreCase = true)
+
+                // Google-only identification:
+                // Account has 'google.com' provider but does NOT have 'password' provider
+                val isGoogleOnly = (signInMethods.contains("google.com") && !signInMethods.contains("password")) ||
+                        ((registeredWithGoogleInCloud || isStoredGoogleAccount) && !signInMethods.contains("password"))
+
+                if (isGoogleOnly) {
+                    val googleOnlyNotice = if (com.example.util.AppLanguageManager.isEnglish()) {
+                        "This account was created with Google Sign-In and has no password.\n\nWhat to do: Please sign in directly using the 'Continue with Google' button below."
+                    } else {
+                        "এই অ্যাকাউন্টটি Google Sign-In দিয়ে তৈরি। এতে কোনো পাসওয়ার্ড নেই।\n\nকরণীয়: অনুগ্রহ করে নিচে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন।"
+                    }
+                    onResult(false, true, googleOnlyNotice)
+                    return@launch
+                }
+
+                // Step 3: Account has password provider (or un-enumerated) -> Send Reset Email
+                auth.sendPasswordResetEmail(cleanEmail).await()
+
+                val successMsg = if (signInMethods.contains("google.com") && signInMethods.contains("password")) {
+                    if (com.example.util.AppLanguageManager.isEnglish()) {
+                        "Your password reset request has been accepted. Please check your inbox and Spam/Junk folder.\n(Note: You can also sign in directly using Google)."
+                    } else {
+                        "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ গ্রহণ করা হয়েছে। ইনবক্স ও Spam/Junk ফোল্ডার পরীক্ষা করুন।\n(নোট: আপনার অ্যাকাউন্টে Google-ও যুক্ত রয়েছে, আপনি চাইলে সরাসরি Google দিয়েও প্রবেশ করতে পারেন)।"
+                    }
+                } else {
+                    com.example.util.AppStrings.passwordResetRequestAccepted
+                }
+
+                onResult(true, false, successMsg)
             } catch (e: Exception) {
-                val appError = AppErrorHandler.map(e)
-                onResult(false, appError.toUserMessage())
+                val appError = com.example.util.AppErrorHandler.map(e)
+                onResult(false, false, appError.toUserMessage())
             }
         }
     }

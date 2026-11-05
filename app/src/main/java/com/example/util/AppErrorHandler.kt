@@ -133,6 +133,17 @@ object AppErrorHandler {
             )
         }
 
+        // 5b. Firebase Authentication: Invalid Email Address Format
+        if (errCode == "ERROR_INVALID_EMAIL" || msg.contains("badly formatted", ignoreCase = true) || msg.contains("invalid email", ignoreCase = true)) {
+            return AppError(
+                problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
+                whatToDoBn = "অনুগ্রহ করে সঠিক ফরম্যাটের জিমেইল লিখুন (যেমন: yourname@gmail.com)।",
+                problemEn = "The email address is badly formatted.",
+                whatToDoEn = "Please enter a valid Gmail address (e.g. yourname@gmail.com).",
+                rawErrorCode = "INVALID_EMAIL"
+            )
+        }
+
         // 6. User Collision (Email or Phone already in use)
         if (error is FirebaseAuthUserCollisionException || errCode == "ERROR_EMAIL_ALREADY_IN_USE") {
             return AppError(
@@ -147,11 +158,42 @@ object AppErrorHandler {
         // 7. Rate Limit / Too Many Requests
         if (error is FirebaseTooManyRequestsException || errCode == "ERROR_TOO_MANY_REQUESTS" || msg.contains("blocked all requests", ignoreCase = true)) {
             return AppError(
-                problemBn = "অতিরিক্ত ভুল চেষ্টার কারণে সাময়িকভাবে সেবা স্থগিত রাখা হয়েছে।",
-                whatToDoBn = "অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন অথবা বিকল্প মাধ্যমে সাইন ইন করুন।",
-                problemEn = "Temporarily blocked due to too many failed attempts.",
-                whatToDoEn = "Please wait a few moments before trying again or use an alternative login method.",
+                problemBn = "অতিরিক্ত অনুরোধের কারণে সাময়িকভাবে সেবা স্থগিত রাখা হয়েছে।",
+                whatToDoBn = "অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন অথবা Google সাইন-ইন ব্যবহার করুন।",
+                problemEn = "Temporarily blocked due to too many failed attempts or SMS quota reached.",
+                whatToDoEn = "Please wait a few moments before trying again or use Google Sign-In.",
                 rawErrorCode = "TOO_MANY_REQUESTS"
+            )
+        }
+
+        // 7b. Phone Provider Disabled or SMS Region Policy Blocked (+880 Bangladesh)
+        if (errCode == "ERROR_OPERATION_NOT_ALLOWED" ||
+            msg.contains("operation is not allowed", ignoreCase = true) ||
+            msg.contains("sign-in provider is disabled", ignoreCase = true) ||
+            msg.contains("SMS unable to be sent", ignoreCase = true) ||
+            msg.contains("region enabled", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "Firebase Phone Authentication বন্ধ রয়েছে অথবা বাংলাদেশে (+880) SMS পাঠানোর অনুমতি (SMS Region Policy) নেই।",
+                whatToDoBn = "১. SMS ঝামেলা ছাড়া 'Google দিয়ে প্রবেশ' ব্যবহার করুন (প্রস্তাবিত)।\n২. অথবা Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) Allow করুন এবং Blaze বিলিং সক্রিয় করুন।",
+                problemEn = "Firebase Phone Auth is disabled or SMS Region Policy blocks Bangladesh (+880).",
+                whatToDoEn = "1. Use 'Sign in with Google' for instant access without SMS dependencies.\n2. In Firebase Console > Authentication > Settings > SMS Region Policy, enable Bangladesh (+880) and check billing.",
+                rawErrorCode = "OPERATION_NOT_ALLOWED"
+            )
+        }
+
+        // 7c. App Verification Failed (SafetyNet / Play Integrity / SHA Fingerprint)
+        if (msg.contains("app not authorized", ignoreCase = true) ||
+            msg.contains("SHA-1", ignoreCase = true) ||
+            msg.contains("app verification failed", ignoreCase = true) ||
+            msg.contains("reCAPTCHA", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "ডিভাইসের নিরাপত্তা যাচাইকরণ (Play Integrity / SHA-1 / reCAPTCHA) ব্যর্থ হয়েছে।",
+                whatToDoBn = "Firebase কনসোলে আপনার Android অ্যাপের বর্তমান debug.keystore SHA-1 (42:5E:D6:A6:24:28:51:03:99:4C:1F:21:81:0E:DD:4E:6A:5B:B1:37) এবং SHA-256 ফিঙ্গারপ্রিন্ট যুক্ত করুন অথবা Google সাইন-ইন ব্যবহার করুন।",
+                problemEn = "Device security check (Play Integrity / SHA-1 / reCAPTCHA) failed.",
+                whatToDoEn = "Add current debug.keystore SHA-1 (42:5E:D6:A6:24:28:51:03:99:4C:1F:21:81:0E:DD:4E:6A:5B:B1:37) in Firebase Console or use Google Sign-In.",
+                rawErrorCode = "APP_NOT_VERIFIED"
             )
         }
 

@@ -150,4 +150,31 @@ object AppStrings {
     // Error & Support Headings
     val errorProblemTitle: String get() = if (isEn()) "Problem:" else "সমস্যা:"
     val errorActionTitle: String get() = if (isEn()) "What to do:" else "করণীয়:"
+
+    // Password Reset & Phone OTP Specific
+    val passwordResetRequestAccepted: String get() = if (isEn()) {
+        "Your password reset request has been accepted. Please check your inbox and Spam/Junk folder."
+    } else {
+        "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ গ্রহণ করা হয়েছে। ইনবক্স ও Spam/Junk ফোল্ডার পরীক্ষা করুন।"
+    }
+
+    val googleOnlyAccountNotice: String get() = if (isEn()) {
+        "This account was created with Google Sign-In and has no password. Please use the 'Continue with Google' button below."
+    } else {
+        "এই অ্যাকাউন্টটি 'Google Sign-In' দিয়ে তৈরি। এতে কোনো পাসওয়ার্ড নেই। অনুগ্রহ করে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন।"
+    }
+
+    val continueWithGoogle: String get() = if (isEn()) "Continue with Google" else "Google দিয়ে প্রবেশ করুন"
+
+    val emailDeliveryNotice: String get() = if (isEn()) {
+        "Tip: The reset email is sent from noreply@smart-business-manager-71879.firebaseapp.com. If not in inbox, please check Spam/Junk folder."
+    } else {
+        "পরামর্শ: রিসেট ইমেইলটি noreply@smart-business-manager-71879.firebaseapp.com থেকে পাঠানো হয়। ইনবক্সে না পেলে Spam/Junk ফোল্ডার চেক করুন।"
+    }
+
+    val phoneOtpNotice: String get() = if (isEn()) {
+        "SMS OTP dispatch request accepted by Firebase. Please wait for the SMS on your mobile network."
+    } else {
+        "Firebase সার্ভারে এসএমএস ওটিপি পাঠানোর অনুরোধ গৃহীত হয়েছে। আপনার মোবাইল নেটওয়ার্কে এসএমএস আসা অপেক্ষা করুন।"
+    }
 }

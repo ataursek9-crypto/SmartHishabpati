@@ -54,8 +54,22 @@ object PhoneAuthHelper {
         return regex.matches(e164)
     }
 
+    private var lastOtpSentTimestamp: Long = 0L
+    private var lastSentPhone: String = ""
+    const val OTP_COOLDOWN_SECONDS: Long = 60L
+
     /**
-     * Sends Firebase SMS OTP to the given phone number.
+     * Checks if cooldown period has passed to avoid burning Firebase SMS quota.
+     */
+    fun getRemainingCooldownSeconds(phone: String): Long {
+        val e164 = normalizeToE164(phone)
+        if (e164 != lastSentPhone) return 0L
+        val elapsed = (System.currentTimeMillis() - lastOtpSentTimestamp) / 1000L
+        return if (elapsed < OTP_COOLDOWN_SECONDS) (OTP_COOLDOWN_SECONDS - elapsed) else 0L
+    }
+
+    /**
+     * Sends Firebase SMS OTP to the given phone number with quota protection.
      */
     fun sendVerificationCode(
         activity: Activity,
@@ -67,7 +81,24 @@ object PhoneAuthHelper {
     ) {
         val e164Phone = normalizeToE164(phone)
         if (!isValidBangladeshPhone(e164Phone)) {
-            onError("সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!")
+            val invalidMsg = if (AppLanguageManager.isEnglish()) {
+                "Problem: Invalid phone number.\nWhat to do: Please enter a valid 11-digit Bangladeshi mobile number (e.g. 017XXXXXXXX)."
+            } else {
+                "সমস্যা: মোবাইল নম্বরটি সঠিক নয়।\nকরণীয়: সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।"
+            }
+            onError(invalidMsg)
+            return
+        }
+
+        // Quota Protection: Prevent rapid consecutive requests from exhausting project SMS quota
+        val remainingCooldown = getRemainingCooldownSeconds(e164Phone)
+        if (remainingCooldown > 0) {
+            val waitMsg = if (AppLanguageManager.isEnglish()) {
+                "Problem: Please wait before requesting another OTP.\nWhat to do: Try again in $remainingCooldown seconds."
+            } else {
+                "সমস্যা: অতিরিক্ত ওটিপি অনুরোধ রোধে সাময়িক অপেক্ষা প্রয়োজন।\nকরণীয়: অনুগ্রহ করে আর $remainingCooldown সেকেন্ড পর পুনরায় চেষ্টা করুন।"
+            }
+            onError(waitMsg)
             return
         }
 
