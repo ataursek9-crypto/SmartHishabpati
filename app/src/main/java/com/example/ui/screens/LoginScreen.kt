@@ -43,9 +43,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.ui.components.LanguageSwitcherButton
 import com.example.ui.theme.*
+import com.example.util.AppErrorHandler
+import com.example.util.AppLanguageManager
+import com.example.util.AppStrings
 import com.example.util.GoogleSignInHelper
 import com.example.util.PhoneAuthHelper
 import com.example.viewmodel.BusinessViewModel
@@ -77,6 +82,7 @@ fun LoginScreen(
     val rememberedEmail by viewModel.rememberedEmail.collectAsStateWithLifecycle()
     val savedRememberMe by viewModel.rememberMeState.collectAsStateWithLifecycle()
     val pendingShopSelection by viewModel.pendingShopSelection.collectAsStateWithLifecycle()
+    val currentLanguage by AppLanguageManager.currentLanguage.collectAsStateWithLifecycle()
 
     // Form State
     var loginMethodTab by remember { mutableIntStateOf(0) } // 0 = Gmail, 1 = Phone
@@ -281,6 +287,16 @@ fun LoginScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
+        // Top-Right Language Switcher (PART 2: Globe Icon with 🇧🇩 বাংলা & 🇬🇧 English)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 10.dp, end = 16.dp)
+                .zIndex(10f)
+        ) {
+            LanguageSwitcherButton()
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -392,7 +408,7 @@ fun LoginScreen(
                         .background(HishabpatiPurple)
                 )
                 Text(
-                    text = "  হিসাব রাখুন স্মার্টভাবে  ",
+                    text = "  ${AppStrings.appSlogan.trim('-').trim()}  ",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = HishabpatiPurple
@@ -439,13 +455,13 @@ fun LoginScreen(
 
                     Column {
                         Text(
-                            text = "আপনার হিসাব নিরাপদ ও সুরক্ষিত",
+                            text = AppStrings.securityBanner,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.5.sp,
                             color = Color(0xFF1E1B4B)
                         )
                         Text(
-                            text = "সহজে লগইন করুন এবং ব্যবসা পরিচালনা করুন",
+                            text = if (AppLanguageManager.isEnglish()) "Easily log in and manage your business" else "সহজে লগইন করুন এবং ব্যবসা পরিচালনা করুন",
                             fontSize = 12.sp,
                             color = Color(0xFF4B5563)
                         )
@@ -537,7 +553,7 @@ fun LoginScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Gmail লগইন",
+                                text = AppStrings.tabGmailLogin,
                                 fontWeight = if (loginMethodTab == 0) FontWeight.Bold else FontWeight.Medium,
                                 color = if (loginMethodTab == 0) HishabpatiPurple else Color(0xFF64748B),
                                 fontSize = 14.sp
@@ -566,7 +582,7 @@ fun LoginScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "ফোন লগইন",
+                                text = AppStrings.tabPhoneLogin,
                                 fontWeight = if (loginMethodTab == 1) FontWeight.Bold else FontWeight.Medium,
                                 color = if (loginMethodTab == 1) HishabpatiPurple else Color(0xFF64748B),
                                 fontSize = 14.sp
@@ -600,7 +616,7 @@ fun LoginScreen(
                                 email = it
                                 errorMessage = ""
                             },
-                            placeholder = { Text("আপনার নিবন্ধিত Gmail ঠিকানা", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text(if (AppLanguageManager.isEnglish()) "Your registered Gmail address" else "আপনার নিবন্ধিত Gmail ঠিকানা", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Email,
@@ -629,7 +645,7 @@ fun LoginScreen(
                                 password = it
                                 errorMessage = ""
                             },
-                            placeholder = { Text("৬-সংখ্যার পিন বা পাসওয়ার্ড", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text(if (AppLanguageManager.isEnglish()) "6-digit PIN or password" else "৬-সংখ্যার পিন বা পাসওয়ার্ড", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -674,7 +690,7 @@ fun LoginScreen(
                                 Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "পুরোনো দোকান বা সংরক্ষিত অফলাইন পিনের জন্য ফোন নম্বর ও পিন ব্যবহার করুন।",
+                                    text = if (AppLanguageManager.isEnglish()) "Use phone number and PIN for existing shops or saved offline access." else "পুরোনো দোকান বা সংরক্ষিত অফলাইন পিনের জন্য ফোন নম্বর ও পিন ব্যবহার করুন।",
                                     fontSize = 11.5.sp,
                                     color = Color(0xFF92400E),
                                     lineHeight = 15.sp
@@ -689,7 +705,7 @@ fun LoginScreen(
                                 phone = it
                                 errorMessage = ""
                             },
-                            placeholder = { Text("মোবাইল নম্বর", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text(if (AppLanguageManager.isEnglish()) "Mobile number" else "মোবাইল নম্বর", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.PhoneAndroid,
@@ -720,7 +736,7 @@ fun LoginScreen(
                                     errorMessage = ""
                                 }
                             },
-                            placeholder = { Text("৪ বা ৬-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
+                            placeholder = { Text(if (AppLanguageManager.isEnglish()) "4 or 6-digit PIN" else "৪ বা ৬-সংখ্যার পিন", color = Color(0xFF94A3B8)) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
@@ -782,14 +798,14 @@ fun LoginScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "মনে রাখুন",
+                                text = AppStrings.rememberMe,
                                 fontSize = 13.sp,
                                 color = Color(0xFF475569)
                             )
                         }
 
                         Text(
-                            text = if (loginMethodTab == 0) "পাসওয়ার্ড ভুলে গেছেন?" else "পিন ভুলে গেছেন?",
+                            text = if (loginMethodTab == 0) AppStrings.forgotPassword else AppStrings.forgotPin,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = HishabpatiPurple,
@@ -837,7 +853,7 @@ fun LoginScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "লগইন করুন",
+                                    text = AppStrings.buttonLogin,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                     color = Color.White
@@ -859,7 +875,7 @@ fun LoginScreen(
             ) {
                 HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE2E8F0))
                 Text(
-                    text = "  অথবা  ",
+                    text = if (AppLanguageManager.isEnglish()) "  OR  " else "  অথবা  ",
                     fontSize = 13.sp,
                     color = Color(0xFF64748B),
                     fontWeight = FontWeight.Medium
@@ -891,7 +907,7 @@ fun LoginScreen(
                         GoogleLogoMini(modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Google দিয়ে লগইন করুন",
+                            text = AppStrings.googleSignInButton,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 15.sp,
                             color = Color(0xFF1E1B4B)
@@ -927,7 +943,7 @@ fun LoginScreen(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "পিন ভুলে গেছেন?",
+                        text = AppStrings.forgotPin,
                         color = HishabpatiPurple,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp
@@ -956,7 +972,7 @@ fun LoginScreen(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "সাহায্য প্রয়োজন?",
+                        text = AppStrings.needHelp,
                         color = HishabpatiPurple,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp
@@ -993,7 +1009,7 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "নতুন অ্যাকাউন্ট তৈরি করুন",
+                            text = AppStrings.createNewShop,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.5.sp,
                             color = HishabpatiPurple

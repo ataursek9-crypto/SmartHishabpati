@@ -358,6 +358,7 @@ class SuperAdminRepository(
     fun isFirebaseConfigured(): Boolean {
         if (disableFirebaseForTesting) return false
         return try {
+            com.example.util.FirebaseInitHelper.ensureFirebaseInitialized(context)
             FirebaseApp.getApps(context).isNotEmpty()
         } catch (_: Exception) {
             false
@@ -366,6 +367,7 @@ class SuperAdminRepository(
 
     fun isUserSignedIn(): Boolean {
         return try {
+            com.example.util.FirebaseInitHelper.ensureFirebaseInitialized(context)
             FirebaseAuth.getInstance().currentUser != null
         } catch (_: Exception) {
             false

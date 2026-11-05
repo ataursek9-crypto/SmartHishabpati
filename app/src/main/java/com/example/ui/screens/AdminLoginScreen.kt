@@ -52,11 +52,15 @@ fun AdminLoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("এডমিন নিরাপত্তা পোর্টাল", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                title = { Text(if (com.example.util.AppLanguageManager.isEnglish()) "Admin Security Portal" else "এডমিন নিরাপত্তা পোর্টাল", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("admin_login_back_button")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "ফিরে যান")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = if (com.example.util.AppLanguageManager.isEnglish()) "Back" else "ফিরে যান")
                     }
+                },
+                actions = {
+                    com.example.ui.components.LanguageSwitcherButton()
+                    Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = PrimaryNavy,

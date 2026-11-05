@@ -36,6 +36,9 @@ import com.example.data.sync.*
 import com.example.ui.theme.*
 import com.example.util.BengaliFormatter
 import com.example.util.PdfReceiptGenerator
+import com.example.util.AppLanguageManager
+import com.example.util.AppStrings
+import com.example.ui.components.LanguageSwitcherButton
 import com.example.viewmodel.BusinessViewModel
 import com.example.viewmodel.CustomerDueItem
 
@@ -217,6 +220,10 @@ fun AdminDashboardScreen(
                                     tint = AccentAmber
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            LanguageSwitcherButton()
                         }
                     }
 

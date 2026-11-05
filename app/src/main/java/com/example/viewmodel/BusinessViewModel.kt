@@ -28,6 +28,8 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.example.util.FirebaseInitHelper
+import com.example.util.AppErrorHandler
 
 data class DashboardSummary(
     val todaySales: Double = 0.0,
@@ -827,6 +829,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     init {
         viewModelScope.launch {
+            // Ensure Firebase is initialized centrally
+            FirebaseInitHelper.ensureFirebaseInitialized(application)
             // Real business mode: Essential accounts and settings only, no fake demo records
             repository.seedInitialDataIfEmpty(includeSampleDemoData = false)
             checkDefaultAdminPinStatus()
@@ -836,7 +840,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             // Auto-restore Super Admin session ONLY if previously authenticated with verified allowlisted identity
             try {
                 val superAdminRepo = SuperAdminRepository.getInstance(application)
-                val authUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                val authUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
                 val storedEmail = authUser?.email?.trim()?.lowercase() ?: CloudBusinessAuth.getStoredAuthEmail(application)
                 val isStoredSuperAdmin = CloudBusinessAuth.isStoredSuperAdmin(application)
                 val userPhone = authUser?.phoneNumber?.trim() ?: ""
@@ -2375,6 +2379,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
             try {
+                FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                 val authResult = auth.createUserWithEmailAndPassword(cleanEmail, cleanPass).await()
                 val user = authResult.user
@@ -2384,19 +2389,18 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     } catch (e: Exception) {
                         Log.w("EmailAuth", "Email verification send note: ${e.message}")
                     }
-                    onResult(true, "আপনার জিমেইলে (${cleanEmail}) ভেরিফিকেশন লিঙ্ক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স চেক করে লিঙ্কটি নিশ্চিত করুন।", user)
+                    val successMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
+                        "A verification link has been sent to your Gmail (${cleanEmail}). Please check your inbox to confirm."
+                    } else {
+                        "আপনার জিমেইলে (${cleanEmail}) ভেরিফিকেশন লিঙ্ক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স চেক করে লিঙ্কটি নিশ্চিত করুন।"
+                    }
+                    onResult(true, successMsg, user)
                 } else {
-                    onResult(false, "ইউজার একাউন্ট তৈরি করা যায়নি। পুনরায় চেষ্টা করুন।", null)
+                    onResult(false, AppErrorHandler.map(null).toUserMessage(), null)
                 }
             } catch (e: Exception) {
-                val err = e.localizedMessage ?: e.message ?: "রেজিস্ট্রেশন ত্রুটি"
-                val friendlyMsg = when {
-                    err.contains("already in use", ignoreCase = true) -> "এই জিমেইল দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে। দয়া করে লগইন করুন।"
-                    err.contains("badly formatted", ignoreCase = true) -> "ইমেইল ফরম্যাট সঠিক নয়।"
-                    err.contains("network error", ignoreCase = true) -> "ইন্টারনেট সংযোগ সমস্যা। আপনার ডাটা বা ওয়াইফাই চেক করুন।"
-                    else -> "রেজিস্ট্রেশন ব্যর্থ: $err"
-                }
-                onResult(false, friendlyMsg, null)
+                val appError = AppErrorHandler.map(e)
+                onResult(false, appError.toUserMessage(), null)
             }
         }
     }
@@ -2473,6 +2477,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             }
 
             try {
+                FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                 var authResult: com.google.firebase.auth.AuthResult? = null
                 var usedLegacy4DigitSuffix = false
@@ -2511,62 +2516,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                         onResult = onResult
                     )
                 } else {
-                    onResult(false, "লগইন ব্যর্থ হয়েছে। তথ্য যাচাই করুন।", null)
+                    onResult(false, AppErrorHandler.map(null).toUserMessage(), null)
                 }
             } catch (e: Exception) {
-                val err = e.localizedMessage ?: e.message ?: "লগইন ত্রুটি"
-                val errCode = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
-                val isCredentialError = e is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ||
-                    errCode == "ERROR_INVALID_CREDENTIAL" ||
-                    errCode == "ERROR_WRONG_PASSWORD" ||
-                    err.contains("auth credential", ignoreCase = true) ||
-                    err.contains("invalid-credential", ignoreCase = true) ||
-                    err.contains("wrong-password", ignoreCase = true)
-
-                if (isCredentialError) {
-                    val isGoogleOnly = try {
-                        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-                        val methods = auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods ?: emptyList()
-                        methods.contains("google.com") && !methods.contains("password")
-                    } catch (_: Exception) { false }
-
-                    if (isGoogleOnly) {
-                        onResult(
-                            false,
-                            "এই অ্যাকাউন্টটি Google দিয়ে তৈরি করা হয়েছে এবং এতে কোনো পাসওয়ার্ড সেট করা নেই। দয়া করে নিচের 'Google দিয়ে লগইন করুন' বাটনে চাপ দিন।",
-                            null
-                        )
-                        return@launch
-                    }
-                }
-
-                val friendlyMsg = when {
-                    isCredentialError -> {
-                        "পাসওয়ার্ড সঠিক নয়। দয়া করে সঠিক পাসওয়ার্ড বা পিন দিন, অথবা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করে রিসেট করুন।"
-                    }
-                    errCode == "ERROR_USER_NOT_FOUND" ||
-                    err.contains("no user record", ignoreCase = true) ||
-                    err.contains("user-not-found", ignoreCase = true) -> {
-                        "এই জিমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। ইমেইল যাচাই করুন অথবা নতুন দোকান খুলুন।"
-                    }
-                    errCode == "ERROR_INVALID_EMAIL" || err.contains("invalid-email", ignoreCase = true) -> {
-                        "ইমেইল ফরম্যাট সঠিক নয়। সঠিক জিমেইল ঠিকানা লিখুন।"
-                    }
-                    errCode == "ERROR_USER_DISABLED" || err.contains("user-disabled", ignoreCase = true) -> {
-                        "আপনার অ্যাকাউন্টটি নিষ্ক্রিয় করা হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।"
-                    }
-                    errCode == "ERROR_TOO_MANY_REQUESTS" || err.contains("too-many-requests", ignoreCase = true) -> {
-                        "অতিরিক্ত ভুল চেষ্টার কারণে সাময়িকভাবে স্থগিত। কিছুক্ষণ পর পুনরায় চেষ্টা করুন।"
-                    }
-                    e is com.google.firebase.FirebaseNetworkException || err.contains("network error", ignoreCase = true) -> {
-                        "ইন্টারনেট সংযোগ সমস্যা। আপনার ডাটা বা ওয়াইফাই চেক করে পুনরায় চেষ্টা করুন।"
-                    }
-                    err.contains("expired", ignoreCase = true) -> {
-                        "ক্রেডেনশিয়াল মেয়াদোত্তীর্ণ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।"
-                    }
-                    else -> "লগইন ত্রুটি: $err"
-                }
-                onResult(false, friendlyMsg, null)
+                val appError = AppErrorHandler.map(e)
+                onResult(false, appError.toUserMessage(), null)
             }
         }
     }
@@ -2585,17 +2539,18 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
             try {
+                FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                 auth.sendPasswordResetEmail(cleanEmail).await()
-                onResult(true, "আপনার জিমেইলে (${cleanEmail}) পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স বা স্প্যাম ফোল্ডার চেক করুন।")
-            } catch (e: Exception) {
-                val err = e.localizedMessage ?: e.message ?: "ত্রুটি"
-                val friendlyMsg = when {
-                    err.contains("user-not-found", ignoreCase = true) -> "এই জিমেইলে কোনো নিবন্ধিত অ্যাকাউন্ট নেই।"
-                    err.contains("invalid-email", ignoreCase = true) -> "ইমেইল ফরম্যাট সঠিক নয়।"
-                    else -> "পাসওয়ার্ড রিসেট লিংক পাঠানো যায়নি: $err"
+                val successMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
+                    "A password reset link has been sent to your Gmail (${cleanEmail}). Please check your inbox or spam folder."
+                } else {
+                    "আপনার জিমেইলে (${cleanEmail}) পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স বা স্প্যাম ফোল্ডার চেক করুন।"
                 }
-                onResult(false, friendlyMsg)
+                onResult(true, successMsg)
+            } catch (e: Exception) {
+                val appError = AppErrorHandler.map(e)
+                onResult(false, appError.toUserMessage())
             }
         }
     }

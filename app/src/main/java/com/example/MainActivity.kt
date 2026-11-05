@@ -25,6 +25,8 @@ import com.example.ui.theme.SmartBusinessTheme
 import com.example.viewmodel.BusinessViewModel
 import com.example.viewmodel.SuperAdminViewModel
 import androidx.compose.ui.platform.LocalContext
+import com.example.util.AppLanguageManager
+import com.example.util.AppStrings
 
 enum class AppScreen {
     LOGIN,
@@ -103,6 +105,7 @@ fun SmartBusinessApp(
 ) {
     val context = LocalContext.current
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val currentLanguage by AppLanguageManager.currentLanguage.collectAsStateWithLifecycle()
     var currentScreen by remember { mutableStateOf(AppScreen.LOGIN) }
 
     // Screen State parameters
@@ -161,22 +164,22 @@ fun SmartBusinessApp(
                         onClick = {
                             currentScreen = if (isAdmin) AppScreen.ADMIN_DASHBOARD else AppScreen.SALESMAN_DASHBOARD
                         },
-                        icon = { Icon(Icons.Default.Dashboard, contentDescription = "হোম") },
-                        label = { Text("হোম") }
+                        icon = { Icon(Icons.Default.Dashboard, contentDescription = AppStrings.navHome) },
+                        label = { Text(AppStrings.navHome) }
                     )
 
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.SALES_LIST,
                         onClick = { currentScreen = AppScreen.SALES_LIST },
-                        icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "বিক্রি") },
-                        label = { Text("বিক্রি") }
+                        icon = { Icon(Icons.Default.ShoppingCart, contentDescription = AppStrings.navSales) },
+                        label = { Text(AppStrings.navSales) }
                     )
 
                     NavigationBarItem(
                         selected = currentScreen == AppScreen.RECEIPTS_LIST,
                         onClick = { currentScreen = AppScreen.RECEIPTS_LIST },
-                        icon = { Icon(Icons.Default.Receipt, contentDescription = "রসিদ") },
-                        label = { Text("রসিদ") }
+                        icon = { Icon(Icons.Default.Receipt, contentDescription = AppStrings.navReceipts) },
+                        label = { Text(AppStrings.navReceipts) }
                     )
 
                     NavigationBarItem(
@@ -185,8 +188,8 @@ fun SmartBusinessApp(
                             viewModel.logout()
                             currentScreen = AppScreen.LOGIN
                         },
-                        icon = { Icon(Icons.Default.Logout, contentDescription = "লগআউট", tint = MaterialTheme.colorScheme.error) },
-                        label = { Text("লগআউট", color = MaterialTheme.colorScheme.error) }
+                        icon = { Icon(Icons.Default.Logout, contentDescription = AppStrings.navLogout, tint = MaterialTheme.colorScheme.error) },
+                        label = { Text(AppStrings.navLogout, color = MaterialTheme.colorScheme.error) }
                     )
                 }
             }

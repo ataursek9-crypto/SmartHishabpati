@@ -42,6 +42,10 @@ import com.example.data.repository.SuperAdminRepository
 import com.example.ui.theme.*
 import com.example.util.GoogleSignInHelper
 import com.example.util.PhoneAuthHelper
+import com.example.util.FirebaseInitHelper
+import com.example.util.AppLanguageManager
+import com.example.util.AppStrings
+import com.example.ui.components.LanguageSwitcherButton
 import com.example.viewmodel.BusinessViewModel
 import com.example.viewmodel.SuperAdminViewModel
 import com.google.firebase.auth.FirebaseAuth
@@ -283,7 +287,8 @@ fun ShopRegistrationScreen(
         isVerifyingOtp = true
         focusManager.clearFocus()
 
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: authenticatedUser
+        FirebaseInitHelper.ensureFirebaseInitialized(context)
+        val currentUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null } ?: authenticatedUser
         val isGoogleUser = currentUser?.providerData?.any { it.providerId == "google.com" } == true
 
         if (isGoogleUser && currentUser != null) {
@@ -352,7 +357,7 @@ fun ShopRegistrationScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "রেজিস্ট্রেশন",
+                        text = if (AppLanguageManager.isEnglish()) "Shop Registration" else "রেজিস্ট্রেশন",
                         fontWeight = FontWeight.Bold,
                         fontSize = 19.sp,
                         color = Color.White
@@ -372,10 +377,14 @@ fun ShopRegistrationScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "ফিরে যান",
+                            contentDescription = if (AppLanguageManager.isEnglish()) "Back" else "ফিরে যান",
                             tint = Color.White
                         )
                     }
+                },
+                actions = {
+                    LanguageSwitcherButton()
+                    Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = HishabpatiPurple

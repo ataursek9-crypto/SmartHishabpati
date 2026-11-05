@@ -167,10 +167,11 @@ object GoogleSignInHelper {
         onError: (String) -> Unit
     ) {
         if (activity.isFinishing || activity.isDestroyed) {
-            onError("অ্যাক্টিভিটি প্রস্তুত নয়, পুনরায় চেষ্টা করুন।")
+            onError(if (AppLanguageManager.isEnglish()) "Activity is not ready. Please try again." else "অ্যাক্টিভিটি প্রস্তুত নয়, পুনরায় চেষ্টা করুন।")
             return
         }
 
+        FirebaseInitHelper.ensureFirebaseInitialized(activity)
         Log.i(TAG, "Initiating Firebase OAuthProvider fallback for Google Sign-In")
         val provider = OAuthProvider.newBuilder("google.com")
         val auth = FirebaseAuth.getInstance()
@@ -266,6 +267,7 @@ object GoogleSignInHelper {
 
                 if (!googleIdToken.isNullOrBlank()) {
                     Log.i(TAG, "Google ID Token received successfully")
+                    FirebaseInitHelper.ensureFirebaseInitialized(activity)
                     val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
                     val authResult = FirebaseAuth.getInstance().signInWithCredential(authCredential).await()
                     val user = authResult.user

@@ -8,6 +8,7 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.example.util.FirebaseInitHelper
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -244,6 +245,7 @@ class CloudSyncManager(
      */
     fun isCloudBackendConfigured(): Boolean {
         return try {
+            FirebaseInitHelper.ensureFirebaseInitialized(context)
             val apps = FirebaseApp.getApps(context)
             if (apps.isEmpty()) {
                 val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)

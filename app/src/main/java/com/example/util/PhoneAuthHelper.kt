@@ -72,6 +72,7 @@ object PhoneAuthHelper {
         }
 
         try {
+            FirebaseInitHelper.ensureFirebaseInitialized(activity)
             val auth = FirebaseAuth.getInstance()
             val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                 override fun onVerificationCompleted(credential: PhoneAuthCredential) {
@@ -82,7 +83,7 @@ object PhoneAuthHelper {
                             if (user != null) {
                                 onAutoVerified(user)
                             } else {
-                                onError("অথেনটিকেশন সম্পন্ন হয়েছে কিন্তু ব্যবহারকারীর তথ্য পাওয়া যায়নি।")
+                                onError(AppErrorHandler.map(null).toUserMessage())
                             }
                         }
                         .addOnFailureListener { e ->
@@ -128,6 +129,7 @@ object PhoneAuthHelper {
     fun verifyCodeAndSignIn(
         verificationId: String,
         code: String,
+        activity: Activity? = null,
         onSuccess: (user: FirebaseUser) -> Unit,
         onError: (errorMessage: String) -> Unit
     ) {
@@ -137,11 +139,17 @@ object PhoneAuthHelper {
             .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
 
         if (cleanCode.length != 6 || !cleanCode.all { it.isDigit() }) {
-            onError("৬ সংখ্যার সঠিক ওটিপি (OTP) কোড লিখুন!")
+            val invalidMsg = if (AppLanguageManager.isEnglish()) {
+                "Problem: Invalid OTP.\nWhat to do: Please enter the exact 6-digit code received via SMS."
+            } else {
+                "সমস্যা: ওটিপি সঠিক নয়।\nকরণীয়: অনুগ্রহ করে এসএমএসে আসা ৬ সংখ্যার সঠিক কোড লিখুন।"
+            }
+            onError(invalidMsg)
             return
         }
 
         try {
+            activity?.let { FirebaseInitHelper.ensureFirebaseInitialized(it) }
             val credential = PhoneAuthProvider.getCredential(verificationId, cleanCode)
             FirebaseAuth.getInstance().signInWithCredential(credential)
                 .addOnSuccessListener { result ->
@@ -150,7 +158,7 @@ object PhoneAuthHelper {
                         Log.i(TAG, "Successfully authenticated Phone user: ${user.uid}, phone: ${user.phoneNumber}")
                         onSuccess(user)
                     } else {
-                        onError("অথেনটিকেশন সফল কিন্তু ব্যবহারকারীর পরিচয় পাওয়া যায়নি।")
+                        onError(AppErrorHandler.map(null).toUserMessage())
                     }
                 }
                 .addOnFailureListener { e ->
