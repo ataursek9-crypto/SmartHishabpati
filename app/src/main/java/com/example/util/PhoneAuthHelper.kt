@@ -102,6 +102,10 @@ object PhoneAuthHelper {
             return
         }
 
+        // Record cooldown state immediately
+        lastSentPhone = e164Phone
+        lastOtpSentTimestamp = System.currentTimeMillis()
+
         try {
             FirebaseInitHelper.ensureFirebaseInitialized(activity)
             val auth = FirebaseAuth.getInstance()
@@ -216,45 +220,90 @@ object PhoneAuthHelper {
                 msg.contains("sign-in provider is disabled", ignoreCase = true) ||
                 msg.contains("SMS unable to be sent", ignoreCase = true) ||
                 msg.contains("region enabled", ignoreCase = true) ||
+                msg.contains("SMS Region Policy", ignoreCase = true) ||
+                msg.contains("billing", ignoreCase = true) ||
                 msg.contains("OPERATION_NOT_ALLOWED", ignoreCase = true)
     }
 
     /**
-     * Translates Firebase Auth exceptions into helpful, user-friendly Bengali messages.
+     * Translates Firebase Auth exceptions into actionable bilingual messages.
      */
     fun translateFirebaseError(e: Throwable): String {
+        val isEn = AppLanguageManager.isEnglish()
         val msg = e.localizedMessage ?: e.message ?: ""
         val errCode = if (e is FirebaseAuthException) e.errorCode else ""
 
         if (errCode == "ERROR_OPERATION_NOT_ALLOWED" || isProviderOrSmsRegionDisabledMessage(msg)) {
-            return "Firebase-এ Phone প্রোভাইডার বন্ধ রয়েছে অথবা বাংলাদেশে (+880) SMS পাঠানোর অনুমতি (SMS Region Policy) নেই।\n\n" +
-                    "তাৎক্ষণিক সমাধানের উপায়:\n" +
-                    "১. পাশের 'Google অ্যাকাউন্ট' ট্যাব নির্বাচন করে SMS ছাড়া এক ক্লিকেই নিবন্ধন করুন (প্রস্তাবিত)।\n" +
-                    "২. অথবা Firebase Console > Authentication > Sign-in method-এ 'Phone' প্রোভাইডার Enable করুন।\n" +
-                    "৩. এবং Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) অনুমোদন (Allow) করুন।"
+            return if (isEn) {
+                "Firebase Phone Authentication is disabled, SMS Region Policy blocks Bangladesh (+880), or Blaze billing is not activated.\n\n" +
+                        "Recommended actions:\n" +
+                        "1. Use 'Sign in with Google' for instant one-click login/registration without SMS dependencies.\n" +
+                        "2. In Firebase Console > Authentication > Sign-in method, ensure 'Phone' provider is enabled.\n" +
+                        "3. In Firebase Console > Authentication > Settings > SMS Region Policy, allow Bangladesh (+880) and ensure Blaze billing is active."
+            } else {
+                "Firebase-এ Phone প্রোভাইডার বন্ধ রয়েছে, বাংলাদেশে (+880) SMS পাঠানোর অনুমতি (SMS Region Policy) নেই অথবা Blaze বিলিং সক্রিয় নেই।\n\n" +
+                        "করণীয়:\n" +
+                        "১. SMS ঝামেলা ছাড়া তাৎক্ষণিক প্রবেশ করতে 'Google দিয়ে প্রবেশ' ব্যবহার করুন (প্রস্তাবিত)।\n" +
+                        "২. Firebase Console > Authentication > Sign-in method-এ 'Phone' প্রোভাইডার Enable করুন।\n" +
+                        "৩. Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) Allow করুন এবং Blaze বিলিং সক্রিয় রাখুন।"
+            }
         }
 
         return when (e) {
             is FirebaseAuthInvalidCredentialsException -> {
-                "প্রদত্ত ওটিপি (OTP) কোডটি সঠিক নয় অথবা এর মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে সঠিক কোড দিন অথবা আবার কোড পাঠান।"
+                if (isEn) {
+                    "Problem: The OTP code is incorrect or expired.\nWhat to do: Please enter the exact 6-digit code or request a new OTP."
+                } else {
+                    "সমস্যা: প্রদত্ত ওটিপি (OTP) কোডটি সঠিক নয় অথবা এর মেয়াদ শেষ হয়ে গেছে।\nকরণীয়: অনুগ্রহ করে সঠিক ৬ সংখ্যার কোড দিন অথবা আবার কোড পাঠান।"
+                }
             }
             is FirebaseTooManyRequestsException -> {
-                "এসএমএস কোটা শেষ হয়েছে অথবা অতিরিক্ত চেষ্টার কারণে সাময়িকভাবে স্থগিত করা হয়েছে। কিছুক্ষণ পর পুনরায় চেষ্টা করুন অথবা Google সাইন-ইন ব্যবহার করুন।"
+                if (isEn) {
+                    "Problem: SMS quota exceeded or temporarily blocked due to repeated attempts.\nWhat to do: Please try again later or use Google Sign-In."
+                } else {
+                    "সমস্যা: দৈনিক এসএমএস কোটা শেষ হয়েছে অথবা অতিরিক্ত চেষ্টার কারণে সাময়িকভাবে স্থগিত করা হয়েছে।\nকরণীয়: কিছুক্ষণ পর পুনরায় চেষ্টা করুন অথবা Google সাইন-ইন ব্যবহার করুন।"
+                }
             }
             is FirebaseNetworkException -> {
-                "ইন্টারনেট সংযোগ বিচ্ছিন্ন! দয়া করে আপনার ডিভাইসের ডাটা বা ওয়াই-ফাই সংযোগ পরীক্ষা করুন।"
+                if (isEn) {
+                    "Problem: No internet connection.\nWhat to do: Please check your mobile data or Wi-Fi connection and retry."
+                } else {
+                    "সমস্যা: ইন্টারনেট সংযোগ বিচ্ছিন্ন!\nকরণীয়: দয়া করে আপনার ডিভাইসের ডাটা বা ওয়াই-ফাই সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।"
+                }
             }
             else -> {
                 when {
-                    msg.contains("app not authorized", ignoreCase = true) || msg.contains("SHA-1", ignoreCase = true) ->
-                        "অ্যাপের SHA-1 বা প্লে ইন্টিগ্রিটি কনফিগারেশন ত্রুটি। Firebase কনসোলে বর্তমান debug.keystore SHA-1 (9C:BD:4B:DB:79:31:B1:4C:25:F5:B1:ED:E5:AE:29:BB:C1:23:C9:AB) যুক্ত আছে কিনা পরীক্ষা করুন।"
-                    msg.contains("quota", ignoreCase = true) ->
-                        "দৈনিক SMS কোটা পূর্ণ হয়েছে। অনুগ্রহ করে কিছু সময় পর চেষ্টা করুন অথবা Google সাইন-ইন দিয়ে তাৎক্ষণিক নিবন্ধন করুন।"
-                    msg.contains("invalid phone", ignoreCase = true) ->
-                        "মোবাইল নম্বরটি সঠিক ফরম্যাটে নেই। অনুগ্রহ করে সঠিক ১১ ডিজিটের নম্বর দিন (যেমন: 017XXXXXXXX)।"
-                    msg.contains("PERMISSION_DENIED", ignoreCase = true) ->
-                        "ফায়ারবেস অনুমোদনের ত্রুটি (PERMISSION_DENIED)।"
-                    else -> "যাচাইকরণ ব্যর্থ হয়েছে: $msg"
+                    msg.contains("app not authorized", ignoreCase = true) ||
+                    msg.contains("SHA-1", ignoreCase = true) ||
+                    msg.contains("app verification failed", ignoreCase = true) ||
+                    msg.contains("reCAPTCHA", ignoreCase = true) -> {
+                        if (isEn) {
+                            "Device verification (Play Integrity / SHA-1) failed.\nWhat to do: Ensure current debug.keystore SHA-1 (AE:D3:D1:F1:5F:C6:78:C4:E0:23:4D:2A:25:7F:8B:4E:2C:97:75:9E) is added to your Firebase Console project."
+                        } else {
+                            "ডিভাইস ভেরিফিকেশন (Play Integrity / SHA-1) ত্রুটি।\nকরণীয়: Firebase কনসোলে বর্তমান debug.keystore SHA-1 (AE:D3:D1:F1:5F:C6:78:C4:E0:23:4D:2A:25:7F:8B:4E:2C:97:75:9E) যুক্ত আছে কিনা পরীক্ষা করুন।"
+                        }
+                    }
+                    msg.contains("quota", ignoreCase = true) -> {
+                        if (isEn) {
+                            "Daily SMS quota reached. Please try again later or sign in with Google."
+                        } else {
+                            "দৈনিক SMS কোটা পূর্ণ হয়েছে। অনুগ্রহ করে কিছু সময় পর চেষ্টা করুন অথবা Google সাইন-ইন দিয়ে প্রবেশ করুন।"
+                        }
+                    }
+                    msg.contains("invalid phone", ignoreCase = true) -> {
+                        if (isEn) {
+                            "Problem: Invalid phone number format.\nWhat to do: Enter a valid 11-digit Bangladeshi mobile number (e.g. 017XXXXXXXX)."
+                        } else {
+                            "সমস্যা: মোবাইল নম্বরটি সঠিক ফরম্যাটে নেই।\nকরণীয়: অনুগ্রহ করে সঠিক ১১ ডিজিটের নম্বর দিন (যেমন: 017XXXXXXXX)।"
+                        }
+                    }
+                    msg.contains("PERMISSION_DENIED", ignoreCase = true) -> {
+                        if (isEn) "Firebase permission denied (PERMISSION_DENIED)." else "ফায়ারবেস অনুমোদনের ত্রুটি (PERMISSION_DENIED)।"
+                    }
+                    else -> {
+                        val prefix = if (isEn) "Verification failed: " else "যাচাইকরণ ব্যর্থ হয়েছে: "
+                        "$prefix$msg"
+                    }
                 }
             }
         }

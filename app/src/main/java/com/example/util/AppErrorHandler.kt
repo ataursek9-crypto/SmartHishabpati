@@ -106,24 +106,41 @@ object AppErrorHandler {
             )
         }
 
-        // 4. Firebase Authentication: Wrong Password / Invalid Credentials
-        if (error is FirebaseAuthInvalidCredentialsException ||
-            errCode == "ERROR_WRONG_PASSWORD" ||
-            errCode == "ERROR_INVALID_CREDENTIAL" ||
-            msg.contains("password is invalid", ignoreCase = true) ||
-            msg.contains("wrong password", ignoreCase = true)
+        // 4a. Firebase Authentication: Account exists with different credential (e.g. Google user attempting password login)
+        if (errCode == "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" ||
+            msg.contains("account-exists-with-different-credential", ignoreCase = true) ||
+            msg.contains("different credential", ignoreCase = true)
         ) {
             return AppError(
-                problemBn = "পাসওয়ার্ড সঠিক নয়।",
-                whatToDoBn = "আবার চেষ্টা করুন অথবা পাসওয়ার্ড পরিবর্তন (Forgot Password) করুন।",
-                problemEn = "The password is incorrect.",
-                whatToDoEn = "Please try again or reset your password.",
-                rawErrorCode = "WRONG_PASSWORD"
+                problemBn = "এই ইমেইলটি অন্য একটি সাইন-ইন পদ্ধতির (যেমন Google) সাথে যুক্ত।",
+                whatToDoBn = "অনুগ্রহ করে নিচে 'Google দিয়ে প্রবেশ' বোতাম ব্যবহার করে লগইন করুন।",
+                problemEn = "An account already exists with the same email address but different sign-in credentials.",
+                whatToDoEn = "Please sign in using the 'Continue with Google' button below.",
+                rawErrorCode = "ACCOUNT_EXISTS_DIFFERENT_CREDENTIAL"
             )
         }
 
-        // 5. Firebase Authentication: User Not Found
-        if (error is FirebaseAuthInvalidUserException || errCode == "ERROR_USER_NOT_FOUND") {
+        // 4b. Firebase Authentication: Invalid Email Address Format (checked before generic credentials)
+        if (errCode == "ERROR_INVALID_EMAIL" ||
+            msg.contains("badly formatted", ignoreCase = true) ||
+            msg.contains("invalid email", ignoreCase = true) ||
+            msg.contains("invalid_email", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
+                whatToDoBn = "অনুগ্রহ করে সঠিক ফরম্যাটের জিমেইল লিখুন (যেমন: user@gmail.com)।",
+                problemEn = "The email address is badly formatted.",
+                whatToDoEn = "Please enter a valid Gmail address (e.g. user@gmail.com).",
+                rawErrorCode = "INVALID_EMAIL"
+            )
+        }
+
+        // 4c. Firebase Authentication: User Not Found
+        if (error is FirebaseAuthInvalidUserException ||
+            errCode == "ERROR_USER_NOT_FOUND" ||
+            msg.contains("user not found", ignoreCase = true) ||
+            msg.contains("user-not-found", ignoreCase = true)
+        ) {
             return AppError(
                 problemBn = "এই ইমেইল বা নম্বরে কোনো অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।",
                 whatToDoBn = "আপনার ইমেইল বা নম্বরটি সঠিক কিনা যাচাই করুন অথবা নতুন দোকান নিবন্ধন করুন।",
@@ -133,24 +150,46 @@ object AppErrorHandler {
             )
         }
 
-        // 5b. Firebase Authentication: Invalid Email Address Format
-        if (errCode == "ERROR_INVALID_EMAIL" || msg.contains("badly formatted", ignoreCase = true) || msg.contains("invalid email", ignoreCase = true)) {
+        // 4d. Firebase Authentication: Specific Wrong Password
+        if (errCode == "ERROR_WRONG_PASSWORD" ||
+            msg.contains("password is invalid", ignoreCase = true) ||
+            msg.contains("wrong password", ignoreCase = true)
+        ) {
             return AppError(
-                problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
-                whatToDoBn = "অনুগ্রহ করে সঠিক ফরম্যাটের জিমেইল লিখুন (যেমন: yourname@gmail.com)।",
-                problemEn = "The email address is badly formatted.",
-                whatToDoEn = "Please enter a valid Gmail address (e.g. yourname@gmail.com).",
-                rawErrorCode = "INVALID_EMAIL"
+                problemBn = "পাসওয়ার্ড সঠিক নয়।",
+                whatToDoBn = "পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন, অথবা পাসওয়ার্ড ভুলে গেলে নিচে 'Forgot Password' ব্যবহার করুন।",
+                problemEn = "The password is incorrect.",
+                whatToDoEn = "Please try again or use Forgot Password to reset.",
+                rawErrorCode = "WRONG_PASSWORD"
             )
         }
 
-        // 6. User Collision (Email or Phone already in use)
-        if (error is FirebaseAuthUserCollisionException || errCode == "ERROR_EMAIL_ALREADY_IN_USE") {
+        // 4e. Firebase Authentication: Invalid Credentials (covers wrong password OR Google-only account without password)
+        if (error is FirebaseAuthInvalidCredentialsException ||
+            errCode == "ERROR_INVALID_CREDENTIAL" ||
+            msg.contains("invalid-credential", ignoreCase = true) ||
+            msg.contains("INVALID_LOGIN_CREDENTIALS", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "প্রদত্ত পাসওয়ার্ড সঠিক নয়, অথবা অ্যাকাউন্টটি Google দিয়ে তৈরি।",
+                whatToDoBn = "পাসওয়ার্ড যাচাই করে পুনরায় চেষ্টা করুন, অথবা নিচে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন। পাসওয়ার্ড মনে না থাকলে 'Forgot Password' করুন।",
+                problemEn = "Invalid password entered, or this account was created using Google Sign-In.",
+                whatToDoEn = "Verify your password, sign in directly with Google, or use Forgot Password to reset.",
+                rawErrorCode = "INVALID_CREDENTIAL"
+            )
+        }
+
+        // 5. User Collision (Email or Phone already in use)
+        if (error is FirebaseAuthUserCollisionException ||
+            errCode == "ERROR_EMAIL_ALREADY_IN_USE" ||
+            msg.contains("email-already-in-use", ignoreCase = true) ||
+            msg.contains("EMAIL_EXISTS", ignoreCase = true)
+        ) {
             return AppError(
                 problemBn = "এই ইমেইল বা নম্বরটি দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট নিবন্ধিত আছে।",
-                whatToDoBn = "আপনার আগের পাসওয়ার্ড দিয়ে লগইন করুন অথবা পাসওয়ার্ড রিসেট করুন।",
+                whatToDoBn = "আপনার অ্যাকাউন্টে লগইন করুন, অথবা Google দিয়ে যাচাই করে এই অ্যাকাউন্টে নতুন দোকান যুক্ত করুন।",
                 problemEn = "An account already exists with this email or phone number.",
-                whatToDoEn = "Log in using your existing password or reset it.",
+                whatToDoEn = "Log in to your account, or verify with Google to add a new shop to this account.",
                 rawErrorCode = "ACCOUNT_EXISTS"
             )
         }
@@ -190,9 +229,9 @@ object AppErrorHandler {
         ) {
             return AppError(
                 problemBn = "ডিভাইসের নিরাপত্তা যাচাইকরণ (Play Integrity / SHA-1 / reCAPTCHA) ব্যর্থ হয়েছে।",
-                whatToDoBn = "Firebase কনসোলে আপনার Android অ্যাপের বর্তমান debug.keystore SHA-1 (42:5E:D6:A6:24:28:51:03:99:4C:1F:21:81:0E:DD:4E:6A:5B:B1:37) এবং SHA-256 ফিঙ্গারপ্রিন্ট যুক্ত করুন অথবা Google সাইন-ইন ব্যবহার করুন।",
+                whatToDoBn = "Firebase কনসোলে আপনার Android অ্যাপের বর্তমান debug.keystore SHA-1 (AE:D3:D1:F1:5F:C6:78:C4:E0:23:4D:2A:25:7F:8B:4E:2C:97:75:9E) এবং SHA-256 ফিঙ্গারপ্রিন্ট যুক্ত করুন অথবা Google সাইন-ইন ব্যবহার করুন।",
                 problemEn = "Device security check (Play Integrity / SHA-1 / reCAPTCHA) failed.",
-                whatToDoEn = "Add current debug.keystore SHA-1 (42:5E:D6:A6:24:28:51:03:99:4C:1F:21:81:0E:DD:4E:6A:5B:B1:37) in Firebase Console or use Google Sign-In.",
+                whatToDoEn = "Add current debug.keystore SHA-1 (AE:D3:D1:F1:5F:C6:78:C4:E0:23:4D:2A:25:7F:8B:4E:2C:97:75:9E) in Firebase Console or use Google Sign-In.",
                 rawErrorCode = "APP_NOT_VERIFIED"
             )
         }
@@ -228,6 +267,77 @@ object AppErrorHandler {
             problemEn = "Unable to connect to the server.",
             whatToDoEn = "Please try again later or check your internet connection.",
             rawErrorCode = "GENERAL_ERROR"
+        )
+    }
+
+    /**
+     * Dedicated error mapper for Password Reset requests.
+     * Prevents misleading "Wrong Password" errors when requesting a password reset.
+     */
+    fun mapPasswordResetError(error: Throwable?): AppError {
+        if (error == null) {
+            return AppError(
+                problemBn = "পাসওয়ার্ড রিসেট অনুরোধ প্রক্রিয়াধীন।",
+                whatToDoBn = "অনুগ্রহ করে আপনার ইনবক্স ও স্প্যাম ফোল্ডার পরীক্ষা করুন।",
+                problemEn = "Password reset request is processing.",
+                whatToDoEn = "Please check your inbox and spam folders.",
+                rawErrorCode = "SUCCESS"
+            )
+        }
+        val msg = error.message.orEmpty()
+        val errCode = if (error is FirebaseAuthException) error.errorCode else ""
+
+        if (error is UnknownHostException || error is FirebaseNetworkException ||
+            msg.contains("network error", ignoreCase = true) || msg.contains("failed to connect", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "ইন্টারনেট সংযোগ পাওয়া যাচ্ছে না।",
+                whatToDoBn = "মোবাইল ডাটা অথবা Wi-Fi চালু করে আবার চেষ্টা করুন।",
+                problemEn = "No internet connection.",
+                whatToDoEn = "Turn on mobile data or Wi-Fi and try again.",
+                rawErrorCode = "NETWORK_UNAVAILABLE"
+            )
+        }
+
+        if (errCode == "ERROR_INVALID_EMAIL" ||
+            msg.contains("badly formatted", ignoreCase = true) ||
+            msg.contains("invalid email", ignoreCase = true)
+        ) {
+            return AppError(
+                problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
+                whatToDoBn = "অনুগ্রহ করে সঠিক জিমেইল ঠিকানা লিখুন (যেমন: user@gmail.com)।",
+                problemEn = "The email address is badly formatted.",
+                whatToDoEn = "Please enter a valid Gmail address (e.g. user@gmail.com).",
+                rawErrorCode = "INVALID_EMAIL"
+            )
+        }
+
+        if (error is FirebaseAuthInvalidUserException || errCode == "ERROR_USER_NOT_FOUND") {
+            return AppError(
+                problemBn = "এই ইমেইলে কোনো নিবন্ধিত অ্যাকাউন্ট পাওয়া যায়নি।",
+                whatToDoBn = "ইমেইলটি সঠিক কিনা যাচাই করুন অথবা নতুন দোকান নিবন্ধন করুন।",
+                problemEn = "No account found for this email address.",
+                whatToDoEn = "Please verify the email address or register a new shop.",
+                rawErrorCode = "USER_NOT_FOUND"
+            )
+        }
+
+        if (error is FirebaseTooManyRequestsException || errCode == "ERROR_TOO_MANY_REQUESTS") {
+            return AppError(
+                problemBn = "অতিরিক্ত অনুরোধের কারণে সাময়িকভাবে সেবা স্থগিত রাখা হয়েছে।",
+                whatToDoBn = "অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন অথবা Google দিয়ে সরাসরি প্রবেশ করুন।",
+                problemEn = "Temporarily blocked due to too many reset requests.",
+                whatToDoEn = "Please wait a few moments before trying again or sign in with Google.",
+                rawErrorCode = "TOO_MANY_REQUESTS"
+            )
+        }
+
+        return AppError(
+            problemBn = "পাসওয়ার্ড রিসেট লিংক পাঠানোর অনুরোধ ব্যর্থ হয়েছে।",
+            whatToDoBn = "ইন্টারনেট সংযোগ পরীক্ষা করুন অথবা Google দিয়ে সরাসরি প্রবেশ করুন।",
+            problemEn = "Failed to send password reset link.",
+            whatToDoEn = "Check your internet connection or sign in directly with Google.",
+            rawErrorCode = "RESET_FAILED"
         )
     }
 

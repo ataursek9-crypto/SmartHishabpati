@@ -2078,8 +2078,16 @@ object CloudBusinessAuth {
         if (cleanEmail.isNotBlank()) {
             editor.putString("linked_email_user_$cleanEmail", userId)
             editor.putString("linked_email_shop_$cleanEmail", shopId)
+            editor.putString("linked_google_email", cleanEmail)
         }
         editor.apply()
+    }
+
+    fun getStoredGoogleEmail(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString("linked_google_email", null)?.trim()
+            ?: getStoredAuthEmail(context)
+            ?: ""
     }
 
     fun getLinkedUserId(context: Context, uid: String, email: String?): String? {

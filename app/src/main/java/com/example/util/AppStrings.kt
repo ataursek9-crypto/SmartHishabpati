@@ -153,9 +153,9 @@ object AppStrings {
 
     // Password Reset & Phone OTP Specific
     val passwordResetRequestAccepted: String get() = if (isEn()) {
-        "Your password reset request has been accepted. Please check your inbox and Spam/Junk folder."
+        "Your password reset request has been accepted by Firebase. Please check your Gmail Inbox, Spam, and Promotions folders.\n(Note: If this account was created with Google, no password is needed—you can sign in directly with Google)."
     } else {
-        "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ গ্রহণ করা হয়েছে। ইনবক্স ও Spam/Junk ফোল্ডার পরীক্ষা করুন।"
+        "পাসওয়ার্ড পরিবর্তনের লিংক পাঠানোর অনুরোধ Firebase-এ গৃহীত হয়েছে। আপনার Gmail-এর ইনবক্স (Inbox), Spam ও Promotions ফোল্ডার পরীক্ষা করুন।\n(নোট: যদি অ্যাকাউন্টটি Google দিয়ে তৈরি হয়ে থাকে, তবে কোনো পাসওয়ার্ড পরিবর্তনের প্রয়োজন নেই—সরাসরি Google দিয়ে প্রবেশ করতে পারবেন)।"
     }
 
     val googleOnlyAccountNotice: String get() = if (isEn()) {
@@ -167,9 +167,9 @@ object AppStrings {
     val continueWithGoogle: String get() = if (isEn()) "Continue with Google" else "Google দিয়ে প্রবেশ করুন"
 
     val emailDeliveryNotice: String get() = if (isEn()) {
-        "Tip: The reset email is sent from noreply@smart-business-manager-71879.firebaseapp.com. If not in inbox, please check Spam/Junk folder."
+        "Notice: Firebase has accepted the request. Check your Gmail Inbox, Spam, and Promotions folders. (Emails are sent from noreply@smart-business-manager-71879.firebaseapp.com)."
     } else {
-        "পরামর্শ: রিসেট ইমেইলটি noreply@smart-business-manager-71879.firebaseapp.com থেকে পাঠানো হয়। ইনবক্সে না পেলে Spam/Junk ফোল্ডার চেক করুন।"
+        "দৃষ্টি আকর্ষণ: Firebase অনুরোধটি গ্রহণ করেছে। আপনার Gmail-এর Inbox, Spam ও Promotions ফোল্ডার চেক করুন। (ইমেইলটি noreply@smart-business-manager-71879.firebaseapp.com থেকে পাঠানো হয়)।"
     }
 
     val phoneOtpNotice: String get() = if (isEn()) {

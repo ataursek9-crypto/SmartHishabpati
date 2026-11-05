@@ -2586,11 +2586,17 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
                 val storedGoogleEmail = CloudBusinessAuth.getStoredGoogleEmail(getApplication())
                 val isStoredGoogleAccount = storedGoogleEmail.isNotBlank() && storedGoogleEmail.equals(cleanEmail, ignoreCase = true)
+                val isLinkedGoogleAccount = CloudBusinessAuth.getLinkedUserId(getApplication(), "", cleanEmail) != null ||
+                        CloudBusinessAuth.getLinkedShopId(getApplication(), "", cleanEmail) != null
+                val isCurrentGoogleUser = auth.currentUser?.email?.equals(cleanEmail, ignoreCase = true) == true &&
+                        auth.currentUser?.providerData?.any { it.providerId == "google.com" } == true &&
+                        auth.currentUser?.providerData?.none { it.providerId == "password" } == true
 
                 // Google-only identification:
                 // Account has 'google.com' provider but does NOT have 'password' provider
                 val isGoogleOnly = (signInMethods.contains("google.com") && !signInMethods.contains("password")) ||
-                        ((registeredWithGoogleInCloud || isStoredGoogleAccount) && !signInMethods.contains("password"))
+                        isCurrentGoogleUser ||
+                        ((registeredWithGoogleInCloud || isStoredGoogleAccount || isLinkedGoogleAccount) && !signInMethods.contains("password"))
 
                 if (isGoogleOnly) {
                     val googleOnlyNotice = if (com.example.util.AppLanguageManager.isEnglish()) {
@@ -2617,7 +2623,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
                 onResult(true, false, successMsg)
             } catch (e: Exception) {
-                val appError = com.example.util.AppErrorHandler.map(e)
+                val appError = com.example.util.AppErrorHandler.mapPasswordResetError(e)
                 onResult(false, false, appError.toUserMessage())
             }
         }
