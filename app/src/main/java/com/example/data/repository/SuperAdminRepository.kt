@@ -335,7 +335,11 @@ class SuperAdminRepository(
             val result = mutableListOf<PlatformBusiness>()
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
-                result.add(deserializeBusiness(obj))
+                val biz = deserializeBusiness(obj)
+                // Strictly exclude legacy mock demo shops
+                if (biz.id != "biz_fashion_house_2" && biz.id != "biz_dhaka_traders_3") {
+                    result.add(biz)
+                }
             }
             deduplicateBusinesses(result)
         } catch (e: Exception) {
@@ -390,62 +394,14 @@ class SuperAdminRepository(
                 planName = "প্রো স্টোর",
                 subscriptionStatus = SubscriptionStatus.ACTIVE,
                 subscriptionExpiresAt = System.currentTimeMillis() + (45L * 24 * 60 * 60 * 1000),
-                staffCount = 3,
+                staffCount = 1,
                 maxStaffAllowed = 8,
                 notes = "প্রাথমিক প্রধান ব্যবসা প্রতিষ্ঠান"
-            ),
-            PlatformBusiness(
-                id = "biz_fashion_house_2",
-                businessName = "আল-নূর ফ্যাশন হাউস",
-                ownerUid = "owner_usr_2",
-                ownerName = "মাহমুদুল হাসান",
-                ownerEmail = "alnoor.fashion@gmail.com",
-                ownerPhone = "01911223344",
-                status = BusinessAccountStatus.ACTIVE,
-                planId = "plan_basic",
-                planName = "বেসিক ব্যবসা",
-                subscriptionStatus = SubscriptionStatus.ACTIVE,
-                subscriptionExpiresAt = System.currentTimeMillis() + (15L * 24 * 60 * 60 * 1000),
-                staffCount = 2,
-                maxStaffAllowed = 3,
-                notes = "রেডিমেড পোশাকের পাইকারি দোকান"
-            ),
-            PlatformBusiness(
-                id = "biz_dhaka_traders_3",
-                businessName = "ঢাকা পাইকারি ট্রেডার্স",
-                ownerUid = "owner_usr_3",
-                ownerName = "শামীম রেজা",
-                ownerEmail = "dhaka.traders99@gmail.com",
-                ownerPhone = "01688776655",
-                status = BusinessAccountStatus.SUSPENDED,
-                statusReason = "সাবস্ক্রিপশন ফি বকেয়া ও নীতি লঙ্ঘনের অভিযোগ পর্যালোচনাধীন",
-                planId = "plan_basic",
-                planName = "বেসিক ব্যবসা",
-                subscriptionStatus = SubscriptionStatus.EXPIRED,
-                subscriptionExpiresAt = System.currentTimeMillis() - (5L * 24 * 60 * 60 * 1000),
-                staffCount = 2,
-                maxStaffAllowed = 3,
-                notes = "সাময়িক স্থগিত অ্যাকাউন্ট"
             )
         )
         _businesses.value = seedBusinesses
 
         val seedPayments = listOf(
-            PlatformPayment(
-                id = "pay_bkash_881920",
-                businessId = "biz_fashion_house_2",
-                businessName = "আল-নূর ফ্যাশন হাউস",
-                amount = 1000.0,
-                currency = "BDT",
-                paymentMethod = PlatformPaymentMethod.BKASH,
-                transactionReference = "9K8A77L91B",
-                senderNumber = "01911223344",
-                status = PlatformPaymentStatus.PENDING,
-                targetPlanId = "plan_pro",
-                durationMonths = 1,
-                submittedAt = System.currentTimeMillis() - (2L * 60 * 60 * 1000),
-                notes = "প্রো প্যাকেজে আপগ্রেড করার জন্য bKash সেন্ড মানি"
-            ),
             PlatformPayment(
                 id = "pay_nagad_772110",
                 businessId = "biz_smart_store_1",
@@ -629,17 +585,21 @@ class SuperAdminRepository(
                 parseBusinessDoc(doc)
             }
             if (remoteList.isNotEmpty()) {
+                val cleanRemote = remoteList.filter { it.id != "biz_fashion_house_2" && it.id != "biz_dhaka_traders_3" }
                 val current = _businesses.value.toMutableList()
                 // Clear initial static mock seeds when authoritative cloud records exist
                 current.removeAll { it.id == "biz_smart_store_1" || it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
-                val merged = deduplicateBusinesses(remoteList + current)
+                val merged = deduplicateBusinesses(cleanRemote + current)
                 _businesses.value = merged
                 saveBusinessesLocally(merged)
                 startRemoteListeners()
                 Result.success(merged)
             } else {
+                val current = _businesses.value.filter { it.id != "biz_fashion_house_2" && it.id != "biz_dhaka_traders_3" }
+                _businesses.value = deduplicateBusinesses(current)
+                saveBusinessesLocally(_businesses.value)
                 startRemoteListeners()
-                Result.success(deduplicateBusinesses(_businesses.value))
+                Result.success(_businesses.value)
             }
         } catch (e: Exception) {
             Log.w(TAG, "refreshBusinessesFromRemote failed: ${e.message}")
@@ -668,6 +628,7 @@ class SuperAdminRepository(
                 }
                 if (snapshot != null) {
                     val remoteList = snapshot.documents.mapNotNull { doc -> parseBusinessDoc(doc) }
+                        .filter { it.id != "biz_fashion_house_2" && it.id != "biz_dhaka_traders_3" }
                     if (remoteList.isNotEmpty()) {
                         val current = _businesses.value.toMutableList()
                         current.removeAll { it.id == "biz_smart_store_1" || it.id == "biz_fashion_house_2" || it.id == "biz_dhaka_traders_3" }
@@ -1144,67 +1105,56 @@ class SuperAdminRepository(
         return false
     }
 
-    suspend fun findBusinessByOwner(ownerUid: String, ownerEmail: String = "", phone: String = ""): PlatformBusiness? {
+    suspend fun findAllBusinessesByOwner(ownerUid: String, ownerEmail: String = "", phone: String = ""): List<PlatformBusiness> {
         val cleanUid = ownerUid.trim()
         val cleanEmail = ownerEmail.trim().lowercase()
         val localPhone = if (phone.isNotBlank()) CloudBusinessAuth.normalizePhone(phone) else ""
         val e164Phone = if (phone.isNotBlank()) CloudBusinessAuth.normalizeToE164(phone) else ""
         val rawPhone = phone.trim()
+        val results = mutableListOf<PlatformBusiness>()
 
-        // 1. Check in-memory state
-        val localMatch = _businesses.value.firstOrNull {
+        // 1. In-memory state
+        val inMemoryMatches = _businesses.value.filter {
             (cleanUid.isNotBlank() && (it.id == cleanUid || it.ownerUid == cleanUid)) ||
             (cleanEmail.isNotBlank() && it.ownerEmail.equals(cleanEmail, ignoreCase = true)) ||
             (localPhone.isNotBlank() && CloudBusinessAuth.matchesPhone(it.ownerPhone, localPhone)) ||
             (rawPhone.isNotBlank() && (it.ownerPhone == rawPhone || it.ownerPhone.endsWith(rawPhone.takeLast(10))))
         }
-        if (localMatch != null) return localMatch
+        results.addAll(inMemoryMatches)
 
         // 2. Query Firestore if configured and signed in
         if (isFirebaseConfigured() && isUserSignedIn()) {
             try {
                 val firestore = FirebaseFirestore.getInstance()
                 if (cleanUid.isNotBlank()) {
-                    // Direct lookup by document ID (supports UID-keyed business docs)
                     try {
                         val directDoc = firestore.collection("businesses").document(cleanUid).get().await()
                         if (directDoc.exists()) {
-                            val parsed = parseBusinessDoc(directDoc)
-                            if (parsed != null) return parsed
+                            parseBusinessDoc(directDoc)?.let { results.add(it) }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "findBusinessByOwner direct doc lookup note: ${e.message}")
+                        Log.w(TAG, "findAllBusinessesByOwner direct doc lookup note: ${e.message}")
                     }
 
                     try {
                         val querySnap = firestore.collection("businesses")
                             .whereEqualTo("ownerUid", cleanUid)
-                            .limit(1)
                             .get()
                             .await()
-                        val foundDoc = querySnap.documents.firstOrNull()
-                        if (foundDoc != null) {
-                            val parsed = parseBusinessDoc(foundDoc)
-                            if (parsed != null) return parsed
-                        }
+                        querySnap.documents.mapNotNull { parseBusinessDoc(it) }.forEach { results.add(it) }
                     } catch (e: Exception) {
-                        Log.w(TAG, "findBusinessByOwner query ownerUid note: ${e.message}")
+                        Log.w(TAG, "findAllBusinessesByOwner query ownerUid note: ${e.message}")
                     }
                 }
                 if (cleanEmail.isNotBlank()) {
                     try {
                         val querySnapEmail = firestore.collection("businesses")
                             .whereEqualTo("ownerEmail", cleanEmail)
-                            .limit(1)
                             .get()
                             .await()
-                        val foundDoc = querySnapEmail.documents.firstOrNull()
-                        if (foundDoc != null) {
-                            val parsed = parseBusinessDoc(foundDoc)
-                            if (parsed != null) return parsed
-                        }
+                        querySnapEmail.documents.mapNotNull { parseBusinessDoc(it) }.forEach { results.add(it) }
                     } catch (e: Exception) {
-                        Log.w(TAG, "findBusinessByOwner query ownerEmail note: ${e.message}")
+                        Log.w(TAG, "findAllBusinessesByOwner query ownerEmail note: ${e.message}")
                     }
                 }
                 if (localPhone.isNotBlank() || e164Phone.isNotBlank() || rawPhone.isNotBlank()) {
@@ -1217,52 +1167,27 @@ class SuperAdminRepository(
                                 if (!bizId.isNullOrBlank()) {
                                     val bizDoc = firestore.collection("businesses").document(bizId).get().await()
                                     if (bizDoc.exists()) {
-                                        val parsed = parseBusinessDoc(bizDoc)
-                                        if (parsed != null) return parsed
+                                        parseBusinessDoc(bizDoc)?.let { results.add(it) }
                                     }
                                 }
                             }
                         } catch (pe: Exception) {
-                            Log.w(TAG, "findBusinessByOwner registered_phones candidate $candidate note: ${pe.message}")
-                        }
-                    }
-                    // For authenticated store owners or Super Admins, check phone and ownerPhone fields
-                    for (phoneToTest in phoneCandidates) {
-                        try {
-                            val queryOwnerPhone = firestore.collection("businesses")
-                                .whereEqualTo("ownerPhone", phoneToTest)
-                                .limit(1)
-                                .get()
-                                .await()
-                            val foundDoc = queryOwnerPhone.documents.firstOrNull()
-                            if (foundDoc != null) {
-                                val parsed = parseBusinessDoc(foundDoc)
-                                if (parsed != null) return parsed
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "findBusinessByOwner query ownerPhone note: ${e.message}")
-                        }
-                        try {
-                            val queryPhone = firestore.collection("businesses")
-                                .whereEqualTo("phone", phoneToTest)
-                                .limit(1)
-                                .get()
-                                .await()
-                            val foundDoc = queryPhone.documents.firstOrNull()
-                            if (foundDoc != null) {
-                                val parsed = parseBusinessDoc(foundDoc)
-                                if (parsed != null) return parsed
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "findBusinessByOwner query phone field note: ${e.message}")
+                            Log.w(TAG, "findAllBusinessesByOwner registered_phones candidate $candidate note: ${pe.message}")
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "findBusinessByOwner query error: ${e.message}")
+                Log.w(TAG, "findAllBusinessesByOwner query error: ${e.message}")
             }
         }
-        return null
+
+        // Strictly exclude legacy mock demo shops and deduplicate
+        val filtered = results.filter { it.id != "biz_fashion_house_2" && it.id != "biz_dhaka_traders_3" }
+        return deduplicateBusinesses(filtered)
+    }
+
+    suspend fun findBusinessByOwner(ownerUid: String, ownerEmail: String = "", phone: String = ""): PlatformBusiness? {
+        return findAllBusinessesByOwner(ownerUid, ownerEmail, phone).firstOrNull()
     }
 
     suspend fun registerNewShop(business: PlatformBusiness): Result<PlatformBusiness> {

@@ -371,6 +371,14 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
+    // Multi-Shop selection state for accounts owning multiple stores
+    private val _pendingShopSelection = MutableStateFlow<PendingShopSelection?>(null)
+    val pendingShopSelection: StateFlow<PendingShopSelection?> = _pendingShopSelection.asStateFlow()
+
+    fun dismissShopSelection() {
+        _pendingShopSelection.value = null
+    }
+
     // Existing Shop PIN Setup requirement state
     private val _pendingPinSetup = MutableStateFlow<PendingPinSetupInfo?>(null)
     val pendingPinSetup: StateFlow<PendingPinSetupInfo?> = _pendingPinSetup.asStateFlow()
@@ -449,6 +457,77 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 Log.e("PinUpgrade", "Failed to upgrade PIN: ${e.message}", e)
                 onResult(false, "পিন আপগ্রেড ব্যর্থ হয়েছে: ${e.localizedMessage ?: e.message}")
             }
+        }
+    }
+
+    /**
+     * Selects a specific shop from the user's available shops and initializes session & data isolation.
+     */
+    fun selectShopAndProceed(
+        shop: PlatformBusiness,
+        onResult: (Boolean, String, UserRole?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val fUser = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
+            val uid = fUser?.uid ?: shop.ownerUid.ifBlank { "admin_${System.currentTimeMillis()}" }
+            val cleanEmail = fUser?.email?.trim()?.lowercase() ?: shop.ownerEmail.trim().lowercase()
+            val phone = shop.ownerPhone.ifBlank { fUser?.phoneNumber ?: "" }
+            val name = fUser?.displayName?.takeIf { it.isNotBlank() } ?: shop.ownerName.ifBlank { "দোকান স্বত্বাধিকারী" }
+            val resolvedShopId = shop.id
+
+            var cloudPinHash = ""
+            try {
+                if (com.google.firebase.FirebaseApp.getApps(getApplication()).isNotEmpty()) {
+                    val staffDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("businesses").document(resolvedShopId)
+                        .collection("staff").document(uid).get().await()
+                    if (staffDoc.exists()) {
+                        cloudPinHash = staffDoc.getString("pinHash") ?: ""
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val adminUser = User(
+                id = uid,
+                name = name,
+                phone = phone.ifBlank { "01700000000" },
+                role = UserRole.ADMIN,
+                pinHash = cloudPinHash,
+                isActive = true,
+                accountStatus = UserAccountStatus.ACTIVE,
+                shopId = resolvedShopId
+            )
+            repository.saveUserDirect(adminUser)
+
+            val settings = CompanySettings(
+                id = 1,
+                businessName = shop.businessName,
+                phone = shop.ownerPhone,
+                address = shop.address.ifBlank { shop.district.ifBlank { "বাংলাদেশ" } }
+            )
+            repository.saveCompanySettingsDirect(settings)
+
+            com.example.data.sync.CloudBusinessAuth.setLinkedGoogleAccount(
+                context = getApplication(),
+                uid = uid,
+                email = cleanEmail,
+                userId = adminUser.id,
+                shopId = resolvedShopId
+            )
+
+            com.example.data.sync.CloudBusinessAuth.setStoredBusinessId(
+                context = getApplication(),
+                businessId = resolvedShopId,
+                businessName = shop.businessName,
+                role = UserRole.ADMIN.name
+            )
+            _activeBusinessId.value = resolvedShopId
+            _currentUser.value = adminUser
+            _pendingShopSelection.value = null
+
+            syncManager.startProductsRealtimeListener()
+            triggerSync()
+            onResult(true, "স্বাগতম, ${shop.businessName}!", UserRole.ADMIN)
         }
     }
 
@@ -1300,57 +1379,32 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 val effectiveOwnerUid = if (ownerUid.isNotBlank()) ownerUid else (currentAuth?.uid ?: "")
                 val effectiveEmail = if (ownerEmail.isNotBlank()) ownerEmail else (currentAuth?.email ?: "")
 
-                // Check duplicate in Super Admin businesses state and Cloud Firestore
+                // Check duplicate phone only if claimed by a completely different user
                 val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
-                val existingInSuperAdmin = superAdminRepo.businesses.value.any {
-                    it.ownerPhone == normalizedPhone && it.id != effectiveOwnerUid && it.ownerUid != effectiveOwnerUid
-                } || (superAdminViewModel?.rawBusinesses?.value?.any { it.ownerPhone == normalizedPhone && it.id != effectiveOwnerUid && it.ownerUid != effectiveOwnerUid } == true)
+                val claimedByOtherOwner = superAdminRepo.businesses.value.any {
+                    it.ownerPhone == normalizedPhone &&
+                    ((it.ownerUid.isNotBlank() && effectiveOwnerUid.isNotBlank() && it.ownerUid != effectiveOwnerUid) ||
+                     (it.ownerEmail.isNotBlank() && effectiveEmail.isNotBlank() && !it.ownerEmail.equals(effectiveEmail, ignoreCase = true)))
+                }
 
-                if (existingInSuperAdmin) {
-                    onResult(false, "এই Gmail বা ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে। নতুন দোকান তৈরি না করে আগের অ্যাকাউন্টে লগইন করুন।", null)
+                if (claimedByOtherOwner) {
+                    onResult(false, "এই ফোন নম্বরটি ইতিমধ্যে অন্য একজন ব্যবহারকারী কর্তৃক ব্যবহৃত হচ্ছে। আপনার নিজস্ব মোবাইল নম্বর দিন।", null)
                     return@launch
                 }
 
-                if (superAdminRepo.isFirebaseConfigured()) {
-                    val isAlreadyRegistered = superAdminRepo.checkPhoneRegisteredRemote(normalizedPhone)
-                    if (isAlreadyRegistered) {
-                        // Check if registered to the same owner
-                        val registeredMatch = superAdminRepo.findBusinessByOwner(effectiveOwnerUid, effectiveEmail, normalizedPhone)
-                        if (registeredMatch == null || (registeredMatch.ownerUid.isNotBlank() && registeredMatch.ownerUid != effectiveOwnerUid)) {
-                            onResult(false, "এই Gmail বা ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে। নতুন দোকান তৈরি না করে আগের অ্যাকাউন্টে লগইন করুন।", null)
-                            return@launch
-                        }
-                    }
-                }
+                // Check if this is the first shop filling an empty stub doc (e.g. UID as doc id)
+                val isFirstShopStub = if (effectiveOwnerUid.isNotBlank() && superAdminRepo.isFirebaseConfigured()) {
+                    try {
+                        val directDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                            .collection("businesses").document(effectiveOwnerUid).get().await()
+                        directDoc.exists() && (directDoc.getString("businessName").isNullOrBlank() || directDoc.getString("address").isNullOrBlank())
+                    } catch (_: Exception) { false }
+                } else false
 
-                // Check if current authenticated user (Google or Phone) already owns a completed business
-                var existingBiz: PlatformBusiness? = null
-                if (effectiveOwnerUid.isNotBlank() || effectiveEmail.isNotBlank() || normalizedPhone.isNotBlank()) {
-                    existingBiz = superAdminRepo.findBusinessByOwner(effectiveOwnerUid, effectiveEmail, normalizedPhone)
-                    if (existingBiz != null) {
-                        val isStub = existingBiz.ownerPhone.isBlank() || existingBiz.address.isBlank()
-                        val isFullyRegistered = !isStub
-
-                        if (isFullyRegistered) {
-                            onResult(false, "এই Gmail বা ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে। নতুন দোকান তৈরি না করে আগের অ্যাকাউন্টে লগইন করুন।", existingBiz.id)
-                            return@launch
-                        }
-                    }
-                }
-
-                // Reuse existing shop ID if already created as a stub doc (e.g. PBknnhTZ1LNZsNBb9dpAOInpRmt1), else generate shop ID
-                val shopId = when {
-                    existingBiz != null && existingBiz.id.isNotBlank() -> existingBiz.id
-                    effectiveOwnerUid.isNotBlank() && superAdminRepo.isFirebaseConfigured() -> {
-                        try {
-                            val directDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                .collection("businesses").document(effectiveOwnerUid).get().await()
-                            if (directDoc.exists()) effectiveOwnerUid else "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
-                        } catch (_: Exception) {
-                            "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
-                        }
-                    }
-                    else -> "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
+                val shopId = if (isFirstShopStub) {
+                    effectiveOwnerUid
+                } else {
+                    "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
                 }
 
                 val effectiveAuthUid = if (effectiveOwnerUid.isNotBlank()) effectiveOwnerUid else "admin_${System.currentTimeMillis()}"
@@ -1373,8 +1427,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     businessType = businessType.ifBlank { "সাধারণ ব্যবসা" },
                     address = address.trim(),
                     district = district.trim(),
-                    createdAt = existingBiz?.createdAt ?: System.currentTimeMillis(),
-                    firstUseAt = existingBiz?.firstUseAt ?: System.currentTimeMillis(),
+                    createdAt = System.currentTimeMillis(),
+                    firstUseAt = System.currentTimeMillis(),
                     lastActiveAt = System.currentTimeMillis(),
                     phoneVerified = isPhoneVerified,
                     notes = "নতুন দোকানদার স্ব-নিবন্ধন (সুপার এডমিন অনুমোদনের অপেক্ষায়)"
@@ -1943,62 +1997,34 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
             CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
 
-            // 2. Check linked user via CloudBusinessAuth
+            // 2. Discover all shops owned by this user (supporting multi-store owners)
+            val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
+            val allOwnedShops = superAdminRepo.findAllBusinessesByOwner(uid, cleanEmail, phone)
+
+            if (allOwnedShops.size > 1) {
+                _pendingShopSelection.value = PendingShopSelection(
+                    userUid = uid,
+                    userEmail = cleanEmail,
+                    userName = name,
+                    userPhone = phone,
+                    availableShops = allOwnedShops
+                )
+                onResult(true, "দোকান নির্বাচন করুন", UserRole.ADMIN)
+                return@launch
+            } else if (allOwnedShops.size == 1) {
+                val matchedBiz = allOwnedShops.first()
+                selectShopAndProceed(matchedBiz, onResult)
+                return@launch
+            }
+
+            // 3. Check linked user via CloudBusinessAuth
             val linkedUserId = CloudBusinessAuth.getLinkedUserId(getApplication(), uid, cleanEmail)
             val linkedShopId = CloudBusinessAuth.getLinkedShopId(getApplication(), uid, cleanEmail)
 
             var resolvedUser: User? = if (!linkedUserId.isNullOrBlank()) {
                 repository.getUserById(linkedUserId)
             } else null
-
-            // 3. If not found, check SuperAdminRepository businesses matching ownerEmail or ownerUid or phone
             var resolvedShopId = linkedShopId ?: ""
-            if (resolvedUser == null) {
-                val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
-                val matchedBiz = superAdminRepo.findBusinessByOwner(uid, cleanEmail, phone)
-                if (matchedBiz != null) {
-                    resolvedShopId = matchedBiz.id
-                    if (matchedBiz.ownerPhone.isNotBlank()) {
-                        resolvedUser = repository.getUserByPhone(matchedBiz.ownerPhone)
-                    }
-                    if (resolvedUser == null && matchedBiz.ownerUid.isNotBlank()) {
-                        resolvedUser = repository.getUserById(matchedBiz.ownerUid)
-                    }
-                    if (resolvedUser == null) {
-                        var cloudPinHash = ""
-                        try {
-                            if (FirebaseApp.getApps(getApplication()).isNotEmpty()) {
-                                val staffDoc = FirebaseFirestore.getInstance()
-                                    .collection("businesses").document(matchedBiz.id)
-                                    .collection("staff").document(uid).get().await()
-                                if (staffDoc.exists()) {
-                                    cloudPinHash = staffDoc.getString("pinHash") ?: ""
-                                }
-                            }
-                        } catch (_: Exception) {}
-
-                        val adminUser = User(
-                            id = uid,
-                            name = matchedBiz.ownerName.ifBlank { name },
-                            phone = matchedBiz.ownerPhone.ifBlank { "01700000000" },
-                            role = UserRole.ADMIN,
-                            pinHash = cloudPinHash,
-                            isActive = true,
-                            accountStatus = UserAccountStatus.ACTIVE,
-                            shopId = matchedBiz.id
-                        )
-                        repository.saveUserDirect(adminUser)
-                        val settings = CompanySettings(
-                            id = 1,
-                            businessName = matchedBiz.businessName,
-                            phone = matchedBiz.ownerPhone,
-                            address = matchedBiz.address.ifBlank { matchedBiz.district.ifBlank { "বাংলাদেশ" } }
-                        )
-                        repository.saveCompanySettingsDirect(settings)
-                        resolvedUser = adminUser
-                    }
-                }
-            }
 
             // 4. Check existing user in Room by Firebase UID
             if (resolvedUser == null) {
@@ -2090,11 +2116,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
 
-            // 7. Unknown/unregistered Google user: STRICTLY REJECT!
+            // 7. Unknown/unregistered Google user: Show registration guidance
             _currentUser.value = null
             onResult(
                 false,
-                "এই গুগল অ্যাকাউন্টটি (${if (cleanEmail.isNotBlank()) cleanEmail else name}) অনুমোদিত নয় এবং কোনো নিবন্ধিত দোকানের সাথে যুক্ত নয়। অনুগ্রহ করে নতুন দোকান রেজিস্ট্রেশন করুন অথবা আপনার বিদ্যমান দোকানে এই জিমেইলটি সংযুক্ত করুন।",
+                "USER_HAS_NO_SHOPS: এই গুগল অ্যাকাউন্টের (${if (cleanEmail.isNotBlank()) cleanEmail else name}) অধীনে কোনো নিবন্ধিত দোকান পাওয়া যায়নি। অনুগ্রহ করে নিচের 'নতুন অ্যাকাউন্ট তৈরি করুন' অপশনে গিয়ে আপনার দোকান রেজিস্ট্রেশন করুন।",
                 null
             )
         }
@@ -2490,13 +2516,32 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             } catch (e: Exception) {
                 val err = e.localizedMessage ?: e.message ?: "লগইন ত্রুটি"
                 val errCode = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
-                val friendlyMsg = when {
-                    e is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ||
+                val isCredentialError = e is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ||
                     errCode == "ERROR_INVALID_CREDENTIAL" ||
                     errCode == "ERROR_WRONG_PASSWORD" ||
                     err.contains("auth credential", ignoreCase = true) ||
                     err.contains("invalid-credential", ignoreCase = true) ||
-                    err.contains("wrong-password", ignoreCase = true) -> {
+                    err.contains("wrong-password", ignoreCase = true)
+
+                if (isCredentialError) {
+                    val isGoogleOnly = try {
+                        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                        val methods = auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods ?: emptyList()
+                        methods.contains("google.com") && !methods.contains("password")
+                    } catch (_: Exception) { false }
+
+                    if (isGoogleOnly) {
+                        onResult(
+                            false,
+                            "এই অ্যাকাউন্টটি Google দিয়ে তৈরি করা হয়েছে এবং এতে কোনো পাসওয়ার্ড সেট করা নেই। দয়া করে নিচের 'Google দিয়ে লগইন করুন' বাটনে চাপ দিন।",
+                            null
+                        )
+                        return@launch
+                    }
+                }
+
+                val friendlyMsg = when {
+                    isCredentialError -> {
                         "পাসওয়ার্ড সঠিক নয়। দয়া করে সঠিক পাসওয়ার্ড বা পিন দিন, অথবা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করে রিসেট করুন।"
                     }
                     errCode == "ERROR_USER_NOT_FOUND" ||
@@ -4281,3 +4326,16 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         syncManager.cancelActiveSync()
     }
 }
+
+/**
+ * State representing a multi-shop user who needs to select which shop to manage.
+ */
+data class PendingShopSelection(
+    val userUid: String,
+    val userEmail: String,
+    val userName: String,
+    val userPhone: String,
+    val availableShops: List<com.example.data.model.PlatformBusiness>,
+    val firebaseUser: com.google.firebase.auth.FirebaseUser? = null
+)
+

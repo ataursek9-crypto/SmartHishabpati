@@ -27,7 +27,7 @@ import org.robolectric.shadows.ShadowLooper
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class ComprehensiveSafeUpgradeRegressionTest {
 
     private val testDispatcher = StandardTestDispatcher()

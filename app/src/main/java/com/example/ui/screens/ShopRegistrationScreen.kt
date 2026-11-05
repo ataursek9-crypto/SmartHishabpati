@@ -182,6 +182,65 @@ fun ShopRegistrationScreen(
     }
 
     // --- Action: Send Verification or Create Firebase User ---
+    var isGoogleSigningUp by remember { mutableStateOf(false) }
+
+    val triggerGoogleSignUp: () -> Unit = {
+        errorMessage = ""
+        isGoogleSigningUp = true
+        focusManager.clearFocus()
+        GoogleSignInHelper.launchGoogleSignIn(
+            context = context,
+            scope = coroutineScope,
+            onAuthSuccess = { fUser ->
+                isGoogleSigningUp = false
+                authenticatedUser = fUser
+                email = fUser.email ?: email
+                val gName = fUser.displayName ?: ""
+                if (firstName.isBlank() && gName.isNotBlank()) {
+                    val parts = gName.split(" ")
+                    firstName = parts.firstOrNull() ?: ""
+                    lastName = parts.drop(1).joinToString(" ")
+                }
+                // If PIN and other fields are already filled, register shop directly
+                if (pin.length == 6 && pin == confirmPin && shopName.isNotBlank() && phone.isNotBlank()) {
+                    isVerifyingOtp = true
+                    coroutineScope.launch {
+                        viewModel.registerNewShop(
+                            shopName = shopName.trim(),
+                            ownerName = fullOwnerName.ifBlank { fUser.displayName ?: "দোকান স্বত্বাধিকারী" },
+                            phone = phone.trim(),
+                            address = address.ifBlank { district },
+                            district = district,
+                            businessType = selectedBusinessType,
+                            pin = pin.trim(),
+                            isPhoneVerified = false,
+                            ownerEmail = fUser.email ?: email.trim().lowercase(),
+                            ownerUid = fUser.uid,
+                            superAdminViewModel = superAdminViewModel
+                        ) { regSuccess, regMsg, shopId ->
+                            isVerifyingOtp = false
+                            if (regSuccess && shopId != null) {
+                                successRegisteredShopId = shopId
+                            } else {
+                                errorMessage = regMsg
+                            }
+                        }
+                    }
+                } else {
+                    currentStep = RegistrationStep.STEP_4_VERIFICATION
+                }
+            },
+            onCancelled = {
+                isGoogleSigningUp = false
+            },
+            onError = { err ->
+                isGoogleSigningUp = false
+                errorMessage = err
+            }
+        )
+    }
+
+    // --- Action: Send Verification or Create Firebase User ---
     val triggerSendOtp: () -> Unit = {
         errorMessage = ""
         focusManager.clearFocus()
@@ -208,7 +267,11 @@ fun ShopRegistrationScreen(
                     countdownSeconds = 60
                     currentStep = RegistrationStep.STEP_4_VERIFICATION
                 } else {
-                    errorMessage = msg
+                    if (msg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে") || msg.contains("already in use", ignoreCase = true)) {
+                        errorMessage = "এই জিমেইলটি (${cleanEmail}) ইতিমধ্যে গুগল সাইন-ইন দিয়ে নিবন্ধিত। অনুগ্রহ করে নিচের 'Google দিয়ে যাচাই ও রেজিস্ট্রেশন' বাটনে চাপ দিন।"
+                    } else {
+                        errorMessage = msg
+                    }
                 }
             }
         }
@@ -220,11 +283,39 @@ fun ShopRegistrationScreen(
         isVerifyingOtp = true
         focusManager.clearFocus()
 
-        // Enforce REAL Firebase verification check
-        viewModel.checkEmailVerificationStatus { isSuccess, isVerified, msg ->
-            if (isVerified) {
-                val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: authenticatedUser?.uid ?: ""
-                val currentEmail = FirebaseAuth.getInstance().currentUser?.email ?: email.trim().lowercase()
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: authenticatedUser
+        val isGoogleUser = currentUser?.providerData?.any { it.providerId == "google.com" } == true
+
+        if (isGoogleUser && currentUser != null) {
+            // Google user is already pre-verified by Google Identity
+            coroutineScope.launch {
+                viewModel.registerNewShop(
+                    shopName = shopName.trim(),
+                    ownerName = fullOwnerName.ifBlank { currentUser.displayName ?: "দোকান স্বত্বাধিকারী" },
+                    phone = phone.trim(),
+                    address = address.ifBlank { district },
+                    district = district,
+                    businessType = selectedBusinessType,
+                    pin = pin.trim(),
+                    isPhoneVerified = false,
+                    ownerEmail = currentUser.email ?: email.trim().lowercase(),
+                    ownerUid = currentUser.uid,
+                    superAdminViewModel = superAdminViewModel
+                ) { regSuccess, regMsg, shopId ->
+                    isVerifyingOtp = false
+                    if (regSuccess && shopId != null) {
+                        successRegisteredShopId = shopId
+                    } else {
+                        errorMessage = regMsg
+                    }
+                }
+            }
+        } else {
+            // Enforce REAL Firebase verification check
+            viewModel.checkEmailVerificationStatus { isSuccess, isVerified, msg ->
+                if (isVerified) {
+                    val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: authenticatedUser?.uid ?: ""
+                    val currentEmail = FirebaseAuth.getInstance().currentUser?.email ?: email.trim().lowercase()
 
                 coroutineScope.launch {
                     viewModel.registerNewShop(
@@ -254,6 +345,7 @@ fun ShopRegistrationScreen(
             }
         }
     }
+}
 
     Scaffold(
         topBar = {
@@ -790,7 +882,7 @@ fun ShopRegistrationScreen(
 
                         Button(
                             onClick = triggerSendOtp,
-                            enabled = !isSendingOtp,
+                            enabled = !isSendingOtp && !isGoogleSigningUp,
                             modifier = Modifier
                                 .widthIn(min = 160.dp)
                                 .height(52.dp)
@@ -806,6 +898,36 @@ fun ShopRegistrationScreen(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Instant Google Sign-In Button (Allows existing Google users to register smoothly)
+                    OutlinedButton(
+                        onClick = triggerGoogleSignUp,
+                        enabled = !isGoogleSigningUp && !isSendingOtp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("reg_google_signup_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF5F3FF)),
+                        border = BorderStroke(1.dp, HishabpatiPurple)
+                    ) {
+                        if (isGoogleSigningUp) {
+                            CircularProgressIndicator(color = HishabpatiPurple, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                GoogleLogoMini(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Google দিয়ে যাচাই ও দোকান খুলুন",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = HishabpatiPurple
                                 )
                             }
                         }

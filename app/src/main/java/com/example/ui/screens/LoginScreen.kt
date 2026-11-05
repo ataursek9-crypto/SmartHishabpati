@@ -76,6 +76,7 @@ fun LoginScreen(
     val savedAccounts by viewModel.savedAccounts.collectAsStateWithLifecycle()
     val rememberedEmail by viewModel.rememberedEmail.collectAsStateWithLifecycle()
     val savedRememberMe by viewModel.rememberMeState.collectAsStateWithLifecycle()
+    val pendingShopSelection by viewModel.pendingShopSelection.collectAsStateWithLifecycle()
 
     // Form State
     var loginMethodTab by remember { mutableIntStateOf(0) } // 0 = Gmail, 1 = Phone
@@ -457,21 +458,47 @@ fun LoginScreen(
             // Error Banner (if any)
             if (errorMessage.isNotBlank() || googleStatusMessage.isNotBlank()) {
                 val bannerText = if (errorMessage.isNotBlank()) errorMessage else googleStatusMessage
+                val isNoShopMsg = bannerText.contains("USER_HAS_NO_SHOPS") || bannerText.contains("নতুন দোকান")
+                val cleanBannerText = bannerText.replace("USER_HAS_NO_SHOPS:", "").trim()
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                    colors = CardDefaults.cardColors(containerColor = if (isNoShopMsg) Color(0xFFFEF3C7) else Color(0xFFFEE2E2)),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                    border = BorderStroke(1.dp, if (isNoShopMsg) Color(0xFFFCD34D) else Color(0xFFFCA5A5))
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = AccentRed, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = bannerText, color = Color(0xFF991B1B), fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (isNoShopMsg) Icons.Default.Storefront else Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = if (isNoShopMsg) Color(0xFFD97706) else AccentRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = cleanBannerText,
+                                color = if (isNoShopMsg) Color(0xFF92400E) else Color(0xFF991B1B),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (isNoShopMsg) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = onNavigateToRegistration,
+                                colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(40.dp)
+                            ) {
+                                Icon(Icons.Default.AddBusiness, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("🏪 এখনই নতুন দোকান রেজিস্ট্রেশন করুন", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
                     }
                 }
             }
@@ -1498,6 +1525,153 @@ fun LoginScreen(
                     enabled = !isSendingPasswordReset
                 ) {
                     Text("বন্ধ করুন", color = Color(0xFF64748B))
+                }
+            }
+        )
+    }
+
+    // --- Multi-Shop Selection Dialog (When same Gmail/Phone owns multiple shops) ---
+    if (pendingShopSelection != null) {
+        val selectionState = pendingShopSelection!!
+        var isSelectingShop by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!isSelectingShop) {
+                    viewModel.dismissShopSelection()
+                }
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Store,
+                        contentDescription = "Select Shop",
+                        tint = HishabpatiPurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "আপনার দোকান নির্বাচন করুন",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = HishabpatiPurple
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "এই অ্যাকাউন্টের অধীনে ${selectionState.availableShops.size}টি দোকান পাওয়া গেছে। আপনি কোন দোকানে প্রবেশ করতে চান?",
+                        fontSize = 13.sp,
+                        color = Color(0xFF475569),
+                        lineHeight = 18.sp
+                    )
+
+                    selectionState.availableShops.forEach { shop ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(enabled = !isSelectingShop) {
+                                    isSelectingShop = true
+                                    viewModel.selectShopAndProceed(shop) { success, msg, _ ->
+                                        isSelectingShop = false
+                                        if (success) {
+                                            onLoginSuccess()
+                                        } else {
+                                            errorMessage = msg
+                                        }
+                                    }
+                                },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(Color(0xFFEDE9FE), shape = RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Storefront,
+                                        contentDescription = null,
+                                        tint = HishabpatiPurple,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = shop.businessName.ifBlank { "নামবিহীন দোকান" },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.5.sp,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        text = "${shop.planName.ifBlank { "সাধারণ ব্যবসা" }} • ${shop.ownerPhone.ifBlank { "ফোন অপ্রাপ্য" }}",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                    Text(
+                                        text = "ID: ${shop.id}",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = HishabpatiPurple,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (isSelectingShop) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = HishabpatiPurple)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("দোকানের তথ্য প্রস্তুত হচ্ছে...", fontSize = 12.sp, color = HishabpatiPurple)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.dismissShopSelection()
+                        onNavigateToRegistration()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.AddBusiness, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("নতুন দোকান খুলুন", color = Color.White, fontSize = 12.5.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissShopSelection() },
+                    enabled = !isSelectingShop
+                ) {
+                    Text("বাতিল", color = Color(0xFF64748B))
                 }
             }
         )
