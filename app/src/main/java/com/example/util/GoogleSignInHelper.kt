@@ -142,7 +142,7 @@ object GoogleSignInHelper {
             if (resId != 0) {
                 context.getString(resId)
             } else {
-                context.getString(R.string.default_web_client_id)
+                DEFAULT_WEB_CLIENT_ID
             }
         } catch (_: Exception) {
             DEFAULT_WEB_CLIENT_ID
