@@ -1189,6 +1189,321 @@ exports.setupExistingShopPinWithOtp = functions
     };
   });
 
+/**
+ * Classifies Firebase Auth providerData into strict provider modes without leaking secrets.
+ */
+function classifyAuthProviders(providerData) {
+  const list = Array.isArray(providerData) ? providerData : [];
+  const providerIds = list
+    .map((p) => (p && typeof p.providerId === "string" ? p.providerId.trim().toLowerCase() : ""))
+    .filter(Boolean);
+
+  const hasGoogleProvider = providerIds.includes("google.com");
+  const hasPasswordProvider = providerIds.includes("password");
+  const hasPhoneProvider = providerIds.includes("phone");
+
+  let providerType = "OTHER";
+  if (hasGoogleProvider && hasPasswordProvider) {
+    providerType = "GOOGLE_AND_PASSWORD";
+  } else if (hasGoogleProvider) {
+    providerType = "GOOGLE_ONLY";
+  } else if (hasPasswordProvider) {
+    providerType = "PASSWORD_ONLY";
+  } else if (hasPhoneProvider) {
+    providerType = "PHONE_ONLY";
+  }
+
+  return {
+    providerIds,
+    hasGoogleProvider,
+    hasPasswordProvider,
+    hasPhoneProvider,
+    providerType,
+  };
+}
+
+/**
+ * 4. auditEmailAuthStatus
+ * Audits an email address in Firebase Auth (google.com vs password vs both vs not-found)
+ * and checks whether existing shops are mapped in Firestore without logging secrets or leaking PII.
+ */
+exports.auditEmailAuthStatus = functions.https.onCall(async (data, context) => {
+  const rawEmail = data && typeof data.email === "string" ? data.email : "";
+  const cleanEmail = rawEmail.trim().toLowerCase();
+
+  if (!cleanEmail || !cleanEmail.includes("@") || !cleanEmail.includes(".")) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন (যেমন: user@gmail.com)।"
+    );
+  }
+
+  const authService = authClient || admin.auth();
+  let userRecord = null;
+  let userExists = false;
+
+  try {
+    userRecord = await authService.getUserByEmail(cleanEmail);
+    userExists = Boolean(userRecord && userRecord.uid);
+  } catch (err) {
+    if (err && err.code === "auth/user-not-found") {
+      userExists = false;
+    } else {
+      console.error("auditEmailAuthStatus lookup error:", err && err.code ? err.code : "unknown");
+      throw new functions.https.HttpsError(
+        "internal",
+        "অ্যাকাউন্টের অবস্থা যাচাই করতে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+      );
+    }
+  }
+
+  const classification = userExists
+    ? classifyAuthProviders(userRecord.providerData)
+    : {
+        providerIds: [],
+        hasGoogleProvider: false,
+        hasPasswordProvider: false,
+        hasPhoneProvider: false,
+        providerType: "NOT_FOUND",
+      };
+
+  // Query Firestore businesses mapped by UID or ownerEmail
+  const shopDocsMap = new Map();
+  try {
+    if (userExists && userRecord.uid) {
+      const byUidSnap = await db
+        .collection("businesses")
+        .where("ownerUid", "==", userRecord.uid)
+        .get();
+      if (byUidSnap && Array.isArray(byUidSnap.docs)) {
+        byUidSnap.docs.forEach((doc) => {
+          shopDocsMap.set(doc.id, { id: doc.id, ...(doc.data() || {}) });
+        });
+      }
+    }
+    const byEmailSnap = await db
+      .collection("businesses")
+      .where("ownerEmail", "==", cleanEmail)
+      .get();
+    if (byEmailSnap && Array.isArray(byEmailSnap.docs)) {
+      byEmailSnap.docs.forEach((doc) => {
+        if (!shopDocsMap.has(doc.id)) {
+          shopDocsMap.set(doc.id, { id: doc.id, ...(doc.data() || {}) });
+        }
+      });
+    }
+  } catch (fsErr) {
+    console.warn("auditEmailAuthStatus firestore query note:", fsErr && fsErr.code ? fsErr.code : "query_note");
+  }
+
+  const matchedShops = Array.from(shopDocsMap.values());
+  const shopCount = matchedShops.length;
+  const hasExistingShop = shopCount > 0;
+
+  // Never log passwords, OTPs, tokens, or PII
+  console.info(
+    `[AuthAudit] domain=${cleanEmail.split("@")[1] || "unknown"} exists=${userExists} providerType=${classification.providerType} shopCount=${shopCount}`
+  );
+
+  const callerEmail =
+    context && context.auth && context.auth.token && typeof context.auth.token.email === "string"
+      ? context.auth.token.email.trim().toLowerCase()
+      : "";
+  const isVerifiedOwnerCaller =
+    Boolean(context && context.auth && userExists) &&
+    (context.auth.uid === userRecord.uid || (callerEmail && callerEmail === cleanEmail));
+
+  const response = {
+    exists: userExists,
+    providerType: classification.providerType,
+    hasGoogleProvider: classification.hasGoogleProvider,
+    hasPasswordProvider: classification.hasPasswordProvider,
+    hasExistingShop: hasExistingShop,
+    shopCount: shopCount,
+  };
+
+  // Only include UID & safe shop summaries when the caller is authenticated as this exact user
+  if (isVerifiedOwnerCaller) {
+    response.uid = userRecord.uid;
+    response.emailVerified = Boolean(userRecord.emailVerified);
+    response.shops = matchedShops.map((s) => ({
+      id: s.id,
+      businessName: s.businessName || s.name || "আমার দোকান",
+      ownerPhone: s.ownerPhone || s.phone || "",
+      status: s.status || "ACTIVE",
+      planName: s.planName || "সম্পূর্ণ ফ্রি ব্যবহার",
+      address: s.address || "",
+      district: s.district || "",
+      createdAt: s.createdAt || Date.now(),
+    }));
+  }
+
+  return response;
+});
+
+/**
+ * 5. registerAuthenticatedOwnerShop
+ * Safely registers a new or additional shop for an already-authenticated Firebase user (Google or Email/Password)
+ * using their EXISTING UID without creating a duplicate Firebase Auth user or overwriting existing shops.
+ */
+exports.registerAuthenticatedOwnerShop = functions
+  .runWith({ secrets: [serverPinPepperSecret] })
+  .https.onCall(async (data, context) => {
+    if (!context || !context.auth || !context.auth.uid) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "নিরাপদ দোকান নিবন্ধনের জন্য আগে Google অথবা ইমেইল-পাসওয়ার্ড দিয়ে অ্যাকাউন্ট যাচাই করুন।"
+      );
+    }
+
+    const ownerUid = context.auth.uid;
+    const rawShopName = data && data.shopName;
+    const rawOwnerName = data && data.ownerName;
+    const rawPhone = data && data.phone;
+    const rawPinInput = data && data.pin !== undefined ? String(data.pin) : "";
+    const rawAddress = (data && data.address) || "";
+    const rawDistrict = (data && data.district) || "";
+    const rawBusinessType = (data && data.businessType) || "সাধারণ ব্যবসা";
+    const tokenEmail =
+      context.auth.token && typeof context.auth.token.email === "string"
+        ? context.auth.token.email.trim().toLowerCase()
+        : "";
+    const ownerEmail = tokenEmail || String((data && data.ownerEmail) || "").trim().toLowerCase();
+
+    if (!rawShopName || String(rawShopName).trim().length < 2) {
+      throw new functions.https.HttpsError("invalid-argument", "দোকানের নাম কমপক্ষে ২ অক্ষরের হতে হবে।");
+    }
+    if (!rawOwnerName || String(rawOwnerName).trim().length < 2) {
+      throw new functions.https.HttpsError("invalid-argument", "মালিকের নাম কমপক্ষে ২ অক্ষরের হতে হবে।");
+    }
+    const cleanPinInput = rawPinInput.trim();
+    if (cleanPinInput.length < 4 || cleanPinInput.length > 6) {
+      throw new functions.https.HttpsError("invalid-argument", "পিন কোড অবশ্যই ৪ থেকে ৬ সংখ্যার হতে হবে।");
+    }
+
+    const normalizedPhone = normalizeBangladeshiPhone(rawPhone);
+    if (!isValidBdMobile(normalizedPhone)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "সঠিক ১১ ডিজিটের বাংলাদেশি মোবাইল নম্বর লিখুন (যেমন: 01719140500)।"
+      );
+    }
+
+    const signInProvider =
+      (context.auth.token &&
+        context.auth.token.firebase &&
+        context.auth.token.firebase.sign_in_provider) ||
+      "google.com";
+
+    const saltHex = crypto.randomBytes(16).toString("hex");
+    const peppered = applyServerPepper(cleanPinInput);
+    const derivedHex = derivePbkdf2Hash(peppered, saltHex, 100000);
+    const saltedPbkdf2Hash = `pbkdf2_peppered:100000:${saltHex}:${derivedHex}`;
+
+    const newBizRef = db.collection("businesses").doc();
+    const newBizId = newBizRef.id;
+    const regPhoneRef = db.collection("registered_phones").doc(normalizedPhone);
+    const staffDocRef = newBizRef.collection("staff").doc(ownerUid);
+    const staffPhoneRef = newBizRef.collection("staff_by_phone").doc(normalizedPhone);
+    const now = Date.now();
+
+    const newBizData = {
+      id: newBizId,
+      name: String(rawShopName).trim(),
+      businessName: String(rawShopName).trim(),
+      ownerName: String(rawOwnerName).trim(),
+      ownerEmail: ownerEmail,
+      ownerPhone: normalizedPhone,
+      phone: normalizedPhone,
+      ownerUid: ownerUid,
+      authProvider: signInProvider,
+      address: String(rawAddress).trim().substring(0, 200),
+      district: String(rawDistrict).trim().substring(0, 50),
+      businessType: String(rawBusinessType).trim().substring(0, 50),
+      ownerPinHash: saltedPbkdf2Hash,
+      pinHash: saltedPbkdf2Hash,
+      pinSecurityVersion: 2,
+      status: "PENDING",
+      planId: "plan_free",
+      planName: "সম্পূর্ণ ফ্রি ব্যবহার",
+      subscriptionStatus: "TRIAL",
+      subscriptionExpiresAt: 0,
+      isAutoExpiryDisabled: true,
+      maxStaffAllowed: 3,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.runTransaction(async (t) => {
+      const regDoc = await t.get(regPhoneRef);
+      if (regDoc.exists) {
+        const regData = regDoc.data() || {};
+        if (regData.ownerUid && regData.ownerUid !== ownerUid) {
+          throw new functions.https.HttpsError(
+            "already-exists",
+            "এই মোবাইল নম্বর দিয়ে ইতিমধ্যে অন্য একটি অ্যাকাউন্ট নিবন্ধিত রয়েছে। আপনার নিজস্ব মোবাইল নম্বর দিন।"
+          );
+        }
+      }
+
+      t.set(newBizRef, newBizData);
+      t.set(
+        regPhoneRef,
+        {
+          phone: normalizedPhone,
+          businessId: newBizId,
+          businessName: String(rawShopName).trim(),
+          ownerName: String(rawOwnerName).trim(),
+          ownerUid: ownerUid,
+          ownerEmail: ownerEmail,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      t.set(
+        staffDocRef,
+        {
+          id: ownerUid,
+          name: String(rawOwnerName).trim(),
+          phone: normalizedPhone,
+          email: ownerEmail,
+          role: "ADMIN",
+          pinHash: saltedPbkdf2Hash,
+          pinSecurityVersion: 2,
+          isActive: true,
+          businessId: newBizId,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      t.set(
+        staffPhoneRef,
+        {
+          userId: ownerUid,
+          name: String(rawOwnerName).trim(),
+          phone: normalizedPhone,
+          role: "ADMIN",
+          pinHash: saltedPbkdf2Hash,
+          pinSecurityVersion: 2,
+          isActive: true,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    });
+
+    return {
+      success: true,
+      businessId: newBizId,
+      businessName: String(rawShopName).trim(),
+      ownerUid: ownerUid,
+      ownerEmail: ownerEmail,
+      ownerName: String(rawOwnerName).trim(),
+      role: "ADMIN",
+      phone: normalizedPhone,
+    };
+  });
+
 // Test-only exports: Strictly isolated so they NEVER appear as Cloud Functions endpoints in Production
 if (process.env.NODE_ENV === "test") {
   exports.setDbForTesting = setDbForTesting;
@@ -1200,4 +1515,5 @@ if (process.env.NODE_ENV === "test") {
   exports.normalizeBangladeshiPhone = normalizeBangladeshiPhone;
   exports.isValidBdMobile = isValidBdMobile;
   exports.timingSafeEqual = timingSafeEqual;
+  exports.classifyAuthProviders = classifyAuthProviders;
 }

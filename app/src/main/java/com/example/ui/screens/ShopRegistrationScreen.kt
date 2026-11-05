@@ -38,8 +38,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.PlatformBusiness
 import com.example.data.repository.SuperAdminRepository
 import com.example.ui.theme.*
+import com.example.util.AppErrorHandler
 import com.example.util.GoogleSignInHelper
 import com.example.util.PhoneAuthHelper
 import com.example.util.FirebaseInitHelper
@@ -126,9 +128,47 @@ fun ShopRegistrationScreen(
     var isVerifyingOtp by remember { mutableStateOf(false) }
     var authenticatedUser by remember { mutableStateOf<FirebaseUser?>(null) }
 
+    // Existing Account Recovery & Multi-Shop Preservation State
+    var existingAccountDetected by remember { mutableStateOf(false) }
+    var existingAccountProviderType by remember { mutableStateOf(AppErrorHandler.EmailAuthProviderType.UNKNOWN) }
+    var existingOwnedShops by remember { mutableStateOf<List<PlatformBusiness>>(emptyList()) }
+    var allowAdditionalShopForExistingOwner by remember { mutableStateOf(false) }
+    var existingPasswordInput by remember { mutableStateOf("") }
+    var showExistingPassword by remember { mutableStateOf(false) }
+    var isVerifyingExistingPassword by remember { mutableStateOf(false) }
+    var isLinkingProvider by remember { mutableStateOf(false) }
+    var recoveryStatusMessage by remember { mutableStateOf("") }
+
     // UI Feedback
     var errorMessage by remember { mutableStateOf("") }
     var successRegisteredShopId by remember { mutableStateOf<String?>(null) }
+
+    // Pre-check already authenticated Firebase session (e.g., user signed in via Google on LoginScreen and routed to Register Shop)
+    LaunchedEffect(Unit) {
+        try {
+            FirebaseInitHelper.ensureFirebaseInitialized(context)
+            val currentFUser = FirebaseAuth.getInstance().currentUser
+            if (currentFUser != null) {
+                authenticatedUser = currentFUser
+                if (email.isBlank() && !currentFUser.email.isNullOrBlank()) {
+                    email = currentFUser.email!!
+                }
+                val dName = currentFUser.displayName ?: ""
+                if (firstName.isBlank() && dName.isNotBlank()) {
+                    val parts = dName.split(" ")
+                    firstName = parts.firstOrNull() ?: ""
+                    lastName = parts.drop(1).joinToString(" ")
+                }
+                val ownedShops = viewModel.loadOwnedShopsForCurrentUser()
+                existingOwnedShops = ownedShops
+                val pIds = currentFUser.providerData.mapNotNull { it.providerId }
+                existingAccountProviderType = viewModel.classifyProviderIds(pIds)
+                if (ownedShops.isNotEmpty()) {
+                    existingAccountDetected = true
+                }
+            }
+        } catch (_: Exception) {}
+    }
 
     // Countdown Timer for OTP Resend
     LaunchedEffect(countdownSeconds, currentStep) {
@@ -185,11 +225,12 @@ fun ShopRegistrationScreen(
         "$firstName $lastName".trim()
     }
 
-    // --- Action: Send Verification or Create Firebase User ---
+    // --- Action: Verify / Recover via Google Sign-In (Preserves existing UID & discovers existing shops) ---
     var isGoogleSigningUp by remember { mutableStateOf(false) }
 
     val triggerGoogleSignUp: () -> Unit = {
         errorMessage = ""
+        recoveryStatusMessage = ""
         isGoogleSigningUp = true
         focusManager.clearFocus()
         GoogleSignInHelper.launchGoogleSignIn(
@@ -198,6 +239,7 @@ fun ShopRegistrationScreen(
             onAuthSuccess = { fUser ->
                 isGoogleSigningUp = false
                 authenticatedUser = fUser
+                existingAccountDetected = false
                 email = fUser.email ?: email
                 val gName = fUser.displayName ?: ""
                 if (firstName.isBlank() && gName.isNotBlank()) {
@@ -205,10 +247,21 @@ fun ShopRegistrationScreen(
                     firstName = parts.firstOrNull() ?: ""
                     lastName = parts.drop(1).joinToString(" ")
                 }
-                // If PIN and other fields are already filled, register shop directly
-                if (pin.length == 6 && pin == confirmPin && shopName.isNotBlank() && phone.isNotBlank()) {
-                    isVerifyingOtp = true
-                    coroutineScope.launch {
+                isVerifyingOtp = true
+                coroutineScope.launch {
+                    val ownedShops = viewModel.loadOwnedShopsForCurrentUser()
+                    existingOwnedShops = ownedShops
+                    existingAccountProviderType = viewModel.classifyProviderIds(fUser.providerData.mapNotNull { it.providerId })
+
+                    if (ownedShops.isNotEmpty() && !allowAdditionalShopForExistingOwner) {
+                        isVerifyingOtp = false
+                        existingAccountDetected = true
+                        recoveryStatusMessage = if (AppLanguageManager.isEnglish()) {
+                            "Google account verified (${fUser.email}). Found ${ownedShops.size} existing shop(s)—choose 'Open Existing Shop' or 'Add New Shop to This Gmail' below."
+                        } else {
+                            "Google অ্যাকাউন্ট যাচাই সম্পন্ন (${fUser.email})! এই অ্যাকাউন্টে আগে থেকেই ${ownedShops.size}টি দোকান রয়েছে। নিচে 'আগের দোকানে প্রবেশ করুন' অথবা 'একই Gmail-এ নতুন দোকান যোগ করুন' নির্বাচন করুন।"
+                        }
+                    } else if (pin.length == 6 && pin == confirmPin && shopName.isNotBlank() && PhoneAuthHelper.isValidBangladeshPhone(phone.trim())) {
                         viewModel.registerNewShop(
                             shopName = shopName.trim(),
                             ownerName = fullOwnerName.ifBlank { fUser.displayName ?: "দোকান স্বত্বাধিকারী" },
@@ -220,18 +273,23 @@ fun ShopRegistrationScreen(
                             isPhoneVerified = false,
                             ownerEmail = fUser.email ?: email.trim().lowercase(),
                             ownerUid = fUser.uid,
+                            allowAdditionalShop = allowAdditionalShopForExistingOwner,
                             superAdminViewModel = superAdminViewModel
                         ) { regSuccess, regMsg, shopId ->
                             isVerifyingOtp = false
                             if (regSuccess && shopId != null) {
                                 successRegisteredShopId = shopId
                             } else {
+                                if (regMsg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে")) {
+                                    existingAccountDetected = true
+                                }
                                 errorMessage = regMsg
                             }
                         }
+                    } else {
+                        isVerifyingOtp = false
+                        currentStep = RegistrationStep.STEP_4_VERIFICATION
                     }
-                } else {
-                    currentStep = RegistrationStep.STEP_4_VERIFICATION
                 }
             },
             onCancelled = {
@@ -244,44 +302,141 @@ fun ShopRegistrationScreen(
         )
     }
 
-    // --- Action: Send Verification or Create Firebase User ---
+    // --- Action: Audit Email First, Reuse Existing UID if Signed In, or Create Firebase User ONLY When Email Is New ---
     val triggerSendOtp: () -> Unit = {
         errorMessage = ""
+        recoveryStatusMessage = ""
         focusManager.clearFocus()
 
         val cleanEmail = email.trim().lowercase()
         val cleanPhone = phone.trim()
 
-        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-            errorMessage = "দয়া করে আপনার সঠিক জিমেইল / ইমেইল ঠিকানা দিন!"
-        } else if (cleanPhone.length < 11) {
-            errorMessage = "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!"
+        if (!viewModel.isValidEmailFormat(cleanEmail)) {
+            errorMessage = if (AppLanguageManager.isEnglish()) {
+                "Please enter a valid Gmail / email address!"
+            } else {
+                "দয়া করে আপনার সঠিক জিমেইল / ইমেইল ঠিকানা দিন!"
+            }
+        } else if (!PhoneAuthHelper.isValidBangladeshPhone(cleanPhone)) {
+            errorMessage = if (AppLanguageManager.isEnglish()) {
+                "Please enter a valid 11-digit mobile number (e.g. 017XXXXXXXX)!"
+            } else {
+                "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)!"
+            }
         } else if (pin.length != 6 || !pin.all { it.isDigit() }) {
-            errorMessage = "অনুগ্রহ করে ৬-সংখ্যার গোপন পিন লিখুন!"
+            errorMessage = if (AppLanguageManager.isEnglish()) {
+                "Please enter a 6-digit security PIN!"
+            } else {
+                "অনুগ্রহ করে ৬-সংখ্যার গোপন পিন লিখুন!"
+            }
         } else if (pin != confirmPin) {
-            errorMessage = "পিন এবং পিন নিশ্চিতকরণ মিলছে না!"
+            errorMessage = if (AppLanguageManager.isEnglish()) {
+                "PIN and Confirm PIN do not match!"
+            } else {
+                "পিন এবং পিন নিশ্চিতকরণ মিলছে না!"
+            }
         } else {
             isSendingOtp = true
-            // If user chose Gmail verification, create Firebase user with the 6-digit PIN as password
-            val registrationPassword = pin.trim()
-            viewModel.registerWithEmailPassword(cleanEmail, registrationPassword) { success, msg, user ->
-                isSendingOtp = false
-                if (success && user != null) {
-                    authenticatedUser = user
-                    countdownSeconds = 60
-                    currentStep = RegistrationStep.STEP_4_VERIFICATION
-                } else {
-                    if (msg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে") || msg.contains("already in use", ignoreCase = true)) {
-                        errorMessage = "এই জিমেইলটি (${cleanEmail}) ইতিমধ্যে গুগল সাইন-ইন দিয়ে নিবন্ধিত। অনুগ্রহ করে নিচের 'Google দিয়ে যাচাই ও রেজিস্ট্রেশন' বাটনে চাপ দিন।"
+            coroutineScope.launch {
+                val currentAuth = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null } ?: authenticatedUser
+                val signedInSameEmail = currentAuth != null && currentAuth.email?.trim()?.lowercase() == cleanEmail
+
+                if (signedInSameEmail && currentAuth != null) {
+                    authenticatedUser = currentAuth
+                    val ownedShops = viewModel.loadOwnedShopsForCurrentUser()
+                    existingOwnedShops = ownedShops
+                    existingAccountProviderType = viewModel.classifyProviderIds(currentAuth.providerData.mapNotNull { it.providerId })
+
+                    if (ownedShops.isNotEmpty() && !allowAdditionalShopForExistingOwner) {
+                        isSendingOtp = false
+                        existingAccountDetected = true
+                        errorMessage = if (AppLanguageManager.isEnglish()) {
+                            "This Gmail ($cleanEmail) already has ${ownedShops.size} registered shop(s) on UID ${currentAuth.uid}. Use the recovery card above to open an existing shop or enable 'Add New Shop to This Gmail'."
+                        } else {
+                            "এই Gmail ($cleanEmail) দিয়ে ইতিমধ্যে ${ownedShops.size}টি দোকান তৈরি করা আছে (UID: ${currentAuth.uid})। নতুন Firebase অ্যাকাউন্ট তৈরি না করে উপরের বক্স থেকে 'আগের দোকানে প্রবেশ করুন' অথবা 'একই Gmail-এ নতুন দোকান যোগ করুন' বাটনে ট্যাপ করুন।"
+                        }
                     } else {
-                        errorMessage = msg
+                        // Already verified on existing Firebase Auth user -> register shop directly on existing UID without calling createUserWithEmailAndPassword
+                        viewModel.registerNewShop(
+                            shopName = shopName.trim(),
+                            ownerName = fullOwnerName.ifBlank { currentAuth.displayName ?: "দোকান স্বত্বাধিকারী" },
+                            phone = cleanPhone,
+                            address = address.ifBlank { district },
+                            district = district,
+                            businessType = selectedBusinessType,
+                            pin = pin.trim(),
+                            isPhoneVerified = false,
+                            ownerEmail = cleanEmail,
+                            ownerUid = currentAuth.uid,
+                            allowAdditionalShop = allowAdditionalShopForExistingOwner,
+                            superAdminViewModel = superAdminViewModel
+                        ) { regSuccess, regMsg, shopId ->
+                            isSendingOtp = false
+                            if (regSuccess && shopId != null) {
+                                successRegisteredShopId = shopId
+                            } else {
+                                if (regMsg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে")) {
+                                    existingAccountDetected = true
+                                }
+                                errorMessage = regMsg
+                            }
+                        }
+                    }
+                } else {
+                    // Audit email before ever calling createUserWithEmailAndPassword
+                    val audit = viewModel.auditEmailAuthStatus(cleanEmail)
+                    if (audit.exists) {
+                        isSendingOtp = false
+                        existingAccountDetected = true
+                        existingAccountProviderType = audit.providerType
+                        existingOwnedShops = audit.existingShops
+                        errorMessage = when (audit.providerType) {
+                            AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY -> {
+                                if (AppLanguageManager.isEnglish()) {
+                                    "An account with Gmail ($cleanEmail) already exists via Google Sign-In. Do not create a duplicate account—verify with Google below to reuse your existing UID."
+                                } else {
+                                    "এই Gmail ($cleanEmail) দিয়ে ইতিমধ্যে Google Sign-In অ্যাকাউন্ট তৈরি করা আছে। নতুন অ্যাকাউন্ট তৈরি না করে নিচের Account Recovery অংশ থেকে 'Google দিয়ে যাচাই ও অ্যাকাউন্ট পুনরুদ্ধার' বাটনে চাপ দিন।"
+                                }
+                            }
+                            else -> {
+                                if (AppLanguageManager.isEnglish()) {
+                                    "An account with Gmail ($cleanEmail) already exists. Verify your existing password or Google Sign-In below to continue on your existing UID."
+                                } else {
+                                    "এই Gmail ($cleanEmail) দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে। নতুন অ্যাকাউন্ট তৈরি না করে নিচের Account Recovery অংশ থেকে আপনার আগের পাসওয়ার্ড অথবা Google দিয়ে যাচাই করুন।"
+                                }
+                            }
+                        }
+                    } else {
+                        val registrationPassword = pin.trim()
+                        viewModel.registerWithEmailPassword(cleanEmail, registrationPassword) { success, msg, user ->
+                            isSendingOtp = false
+                            if (success && user != null) {
+                                authenticatedUser = user
+                                existingAccountDetected = false
+                                countdownSeconds = 60
+                                currentStep = RegistrationStep.STEP_4_VERIFICATION
+                            } else {
+                                if (msg.contains("ACCOUNT_EXISTS") || msg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট")) {
+                                    existingAccountDetected = true
+                                    if (msg.contains("GOOGLE_ONLY")) {
+                                        existingAccountProviderType = AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY
+                                    }
+                                    errorMessage = msg
+                                        .replace("ACCOUNT_EXISTS_GOOGLE_ONLY:", "")
+                                        .replace("ACCOUNT_EXISTS_EXISTING_UID:", "")
+                                        .trim()
+                                } else {
+                                    errorMessage = msg
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // --- Action: Check Real Email Verification & Complete Shop Registration ---
+    // --- Action: Check Real Email Verification & Complete Shop Registration on Existing or Newly Created UID ---
     val triggerVerifyAndRegister: () -> Unit = {
         errorMessage = ""
         isVerifyingOtp = true
@@ -291,8 +446,8 @@ fun ShopRegistrationScreen(
         val currentUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null } ?: authenticatedUser
         val isGoogleUser = currentUser?.providerData?.any { it.providerId == "google.com" } == true
 
-        if (isGoogleUser && currentUser != null) {
-            // Google user is already pre-verified by Google Identity
+        if ((isGoogleUser || allowAdditionalShopForExistingOwner) && currentUser != null) {
+            // Google user or recovered multi-shop owner is already authenticated on their UID
             coroutineScope.launch {
                 viewModel.registerNewShop(
                     shopName = shopName.trim(),
@@ -305,52 +460,57 @@ fun ShopRegistrationScreen(
                     isPhoneVerified = false,
                     ownerEmail = currentUser.email ?: email.trim().lowercase(),
                     ownerUid = currentUser.uid,
+                    allowAdditionalShop = allowAdditionalShopForExistingOwner,
                     superAdminViewModel = superAdminViewModel
                 ) { regSuccess, regMsg, shopId ->
                     isVerifyingOtp = false
                     if (regSuccess && shopId != null) {
                         successRegisteredShopId = shopId
                     } else {
+                        if (regMsg.contains("ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে")) {
+                            existingAccountDetected = true
+                        }
                         errorMessage = regMsg
                     }
                 }
             }
         } else {
             // Enforce REAL Firebase verification check
-            viewModel.checkEmailVerificationStatus { isSuccess, isVerified, msg ->
+            viewModel.checkEmailVerificationStatus { _, isVerified, _ ->
                 if (isVerified) {
                     val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: authenticatedUser?.uid ?: ""
                     val currentEmail = FirebaseAuth.getInstance().currentUser?.email ?: email.trim().lowercase()
 
-                coroutineScope.launch {
-                    viewModel.registerNewShop(
-                        shopName = shopName.trim(),
-                        ownerName = fullOwnerName.ifBlank { "দোকান স্বত্বাধিকারী" },
-                        phone = phone.trim(),
-                        address = address.ifBlank { district },
-                        district = district,
-                        businessType = selectedBusinessType,
-                        pin = pin.trim(),
-                        isPhoneVerified = false, // Phone SMS unverified as billing is disabled
-                        ownerEmail = currentEmail,
-                        ownerUid = currentUid,
-                        superAdminViewModel = superAdminViewModel
-                    ) { regSuccess, regMsg, shopId ->
-                        isVerifyingOtp = false
-                        if (regSuccess && shopId != null) {
-                            successRegisteredShopId = shopId
-                        } else {
-                            errorMessage = regMsg
+                    coroutineScope.launch {
+                        viewModel.registerNewShop(
+                            shopName = shopName.trim(),
+                            ownerName = fullOwnerName.ifBlank { "দোকান স্বত্বাধিকারী" },
+                            phone = phone.trim(),
+                            address = address.ifBlank { district },
+                            district = district,
+                            businessType = selectedBusinessType,
+                            pin = pin.trim(),
+                            isPhoneVerified = false,
+                            ownerEmail = currentEmail,
+                            ownerUid = currentUid,
+                            allowAdditionalShop = allowAdditionalShopForExistingOwner,
+                            superAdminViewModel = superAdminViewModel
+                        ) { regSuccess, regMsg, shopId ->
+                            isVerifyingOtp = false
+                            if (regSuccess && shopId != null) {
+                                successRegisteredShopId = shopId
+                            } else {
+                                errorMessage = regMsg
+                            }
                         }
                     }
+                } else {
+                    isVerifyingOtp = false
+                    errorMessage = "আপনার জিমেইল (${email.trim()}) এখনও যাচাই করা হয়নি! দয়া করে আপনার জিমেইলে আসা লিংকে ক্লিক করে 'যাচাই সম্পন্ন করেছি' বাটনে চাপুন।"
                 }
-            } else {
-                isVerifyingOtp = false
-                errorMessage = "আপনার জিমেইল (${email.trim()}) এখনও যাচাই করা হয়নি! দয়া করে আপনার জিমেইলে আসা লিংকে ক্লিক করে 'যাচাই সম্পন্ন করেছি' বাটনে চাপুন।"
             }
         }
     }
-}
 
     Scaffold(
         topBar = {
@@ -393,12 +553,16 @@ fun ShopRegistrationScreen(
         },
         containerColor = Color.White
     ) { innerPadding ->
+        val registrationScrollState = rememberScrollState()
+        LaunchedEffect(currentStep) {
+            registrationScrollState.scrollTo(0)
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(registrationScrollState)
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -494,7 +658,8 @@ fun ShopRegistrationScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 14.dp),
+                        .padding(bottom = 14.dp)
+                        .testTag("reg_error_banner"),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, Color(0xFFFCA5A5))
@@ -506,6 +671,281 @@ fun ShopRegistrationScreen(
                         Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = AccentRed, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = errorMessage, color = Color(0xFF991B1B), fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            // --- Verified Session, Existing Shops & Safe Provider Linking Card ---
+            val activeSessionUser = authenticatedUser
+            if (activeSessionUser != null || existingOwnedShops.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                        .testTag("reg_verified_session_banner"),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E8FF)),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFFC4B5FD))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.VerifiedUser,
+                                contentDescription = null,
+                                tint = HishabpatiPurple,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (AppLanguageManager.isEnglish()) {
+                                        "Verified Account Session (Existing UID Preserved)"
+                                    } else {
+                                        "যাচাইকৃত অ্যাকাউন্ট সেশন (বিদ্যমান UID সংরক্ষিত)"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF3B0764)
+                                )
+                                Text(
+                                    text = "${activeSessionUser?.email ?: email.trim()} • UID: ${(activeSessionUser?.uid ?: "").take(10)}...",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF5B21B6)
+                                )
+                            }
+                        }
+
+                        if (recoveryStatusMessage.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFDCFCE7),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = recoveryStatusMessage,
+                                    color = Color(0xFF166534),
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 16.sp,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+
+                        // Show all existing shops mapped to this Gmail / UID so old shop data is never lost
+                        if (existingOwnedShops.isNotEmpty()) {
+                            Text(
+                                text = if (AppLanguageManager.isEnglish()) {
+                                    "Existing Shops (${existingOwnedShops.size}):"
+                                } else {
+                                    "এই অ্যাকাউন্টের বিদ্যমান দোকান (${existingOwnedShops.size}টি):"
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF3B0764)
+                            )
+
+                            existingOwnedShops.forEachIndexed { idx, existingBiz ->
+                                Surface(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Storefront,
+                                            contentDescription = null,
+                                            tint = HishabpatiPurple,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = existingBiz.businessName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.5.sp,
+                                                color = HishabpatiTextDark
+                                            )
+                                            Text(
+                                                text = "${existingBiz.ownerPhone} • ID: ${existingBiz.id.take(14)}",
+                                                fontSize = 11.sp,
+                                                color = TextMuted
+                                            )
+                                        }
+                                        Button(
+                                            onClick = {
+                                                viewModel.selectShopAndProceed(existingBiz) { ok, msg, _ ->
+                                                    if (ok) {
+                                                        onRegistrationSuccess()
+                                                    } else {
+                                                        errorMessage = msg
+                                                    }
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .height(34.dp)
+                                                .testTag(if (idx == 0) "reg_open_existing_shop_button" else "reg_open_existing_shop_$idx")
+                                        ) {
+                                            Text(
+                                                text = AppStrings.openExistingShopButton,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!allowAdditionalShopForExistingOwner) {
+                                OutlinedButton(
+                                    onClick = {
+                                        allowAdditionalShopForExistingOwner = true
+                                        errorMessage = ""
+                                        recoveryStatusMessage = if (AppLanguageManager.isEnglish()) {
+                                            "Multi-shop mode enabled! Fill out the new shop details and submit—your existing shop(s) remain safe on the same UID."
+                                        } else {
+                                            "নতুন দোকান যোগ করার মোড চালু হয়েছে! নিচের ধাপগুলো পূরণ করে সাবমিট করুন—আপনার আগের দোকান ও তথ্য সম্পূর্ণ নিরাপদ থাকবে।"
+                                        }
+                                    },
+                                    border = BorderStroke(1.dp, HishabpatiPurple),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(40.dp)
+                                        .testTag("reg_add_additional_shop_button")
+                                ) {
+                                    Icon(Icons.Default.AddBusiness, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = AppStrings.addNewShopSameGmailButton,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HishabpatiPurple
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    color = Color(0xFFDCFCE7),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (AppLanguageManager.isEnglish()) {
+                                                "Adding a new shop to your existing UID (all previous shops preserved)."
+                                            } else {
+                                                "বিদ্যমান UID-তে নতুন দোকান যুক্ত হচ্ছে (পুরোনো সব দোকান অপরিবর্তিত থাকবে)।"
+                                            },
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Optional Safe Provider Linking (Links Password to Google UID or Google to Password UID without creating a second UID)
+                        if (activeSessionUser != null) {
+                            val activeProviderIds = activeSessionUser.providerData.mapNotNull { it.providerId }
+                            val hasGoogleLinked = activeProviderIds.contains("google.com")
+                            val hasPasswordLinked = activeProviderIds.contains("password")
+
+                            if (hasGoogleLinked && !hasPasswordLinked && pin.length == 6) {
+                                OutlinedButton(
+                                    onClick = {
+                                        isLinkingProvider = true
+                                        viewModel.linkPasswordProviderToCurrentUser(pin.trim()) { ok, msg, updated ->
+                                            isLinkingProvider = false
+                                            if (ok) {
+                                                authenticatedUser = updated ?: authenticatedUser
+                                                recoveryStatusMessage = msg
+                                            } else {
+                                                errorMessage = msg
+                                            }
+                                        }
+                                    },
+                                    enabled = !isLinkingProvider,
+                                    border = BorderStroke(1.dp, Color(0xFF7C3AED)),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(36.dp)
+                                        .testTag("reg_link_password_button")
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (AppLanguageManager.isEnglish()) "Link 6-Digit PIN to Google UID" else "Google UID-তে ৬-সংখ্যার পিন/পাসওয়ার্ড লিংক করুন",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HishabpatiPurple
+                                    )
+                                }
+                            } else if (hasPasswordLinked && !hasGoogleLinked) {
+                                OutlinedButton(
+                                    onClick = {
+                                        isLinkingProvider = true
+                                        GoogleSignInHelper.requestGoogleIdToken(
+                                            context = context,
+                                            scope = coroutineScope,
+                                            onIdToken = { idToken ->
+                                                viewModel.linkGoogleCredentialToCurrentUser(idToken) { ok, msg, updated ->
+                                                    isLinkingProvider = false
+                                                    if (ok) {
+                                                        authenticatedUser = updated ?: authenticatedUser
+                                                        recoveryStatusMessage = msg
+                                                    } else {
+                                                        errorMessage = msg
+                                                    }
+                                                }
+                                            },
+                                            onCancelled = { isLinkingProvider = false },
+                                            onError = { err ->
+                                                isLinkingProvider = false
+                                                errorMessage = err
+                                            }
+                                        )
+                                    },
+                                    enabled = !isLinkingProvider,
+                                    border = BorderStroke(1.dp, Color(0xFF7C3AED)),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(36.dp)
+                                        .testTag("reg_link_google_button")
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (AppLanguageManager.isEnglish()) "Link Google Sign-In to Existing UID" else "বিদ্যমান UID-তে Google অ্যাকাউন্ট লিংক করুন",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HishabpatiPurple
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -938,6 +1378,204 @@ fun ShopRegistrationScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = HishabpatiPurple
                                 )
+                            }
+                        }
+                    }
+
+                    // Inline Existing Account Recovery Card when Gmail already exists (e.g., anc94450@gmail.com)
+                    val isAlreadySignedIntoEnteredEmail = authenticatedUser?.email?.trim()?.lowercase() == email.trim().lowercase() && email.trim().isNotBlank()
+                    if (existingAccountDetected && !isAlreadySignedIntoEnteredEmail) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("reg_existing_account_recovery_card"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                            border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.ManageAccounts,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "${AppStrings.existingAccountRecoveryTitle}: ${email.trim()}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp,
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+
+                                Text(
+                                    text = if (existingAccountProviderType == AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY) {
+                                        if (AppLanguageManager.isEnglish()) {
+                                            "This Gmail was registered with Google Sign-In. Tap below to verify with Google and continue on your existing UID without losing any shop data."
+                                        } else {
+                                            "এই Gmail দিয়ে আগে Google Sign-In অ্যাকাউন্ট তৈরি হয়েছে। নতুন অ্যাকাউন্ট না বানিয়ে নিচের বাটনে ট্যাপ করে আপনার বিদ্যমান UID দিয়ে দোকান খুলুন বা আগের দোকানে প্রবেশ করুন।"
+                                        }
+                                    } else {
+                                        if (AppLanguageManager.isEnglish()) {
+                                            "This Gmail already exists in Firebase Auth. Verify using Google Sign-In OR your existing password below to recover your UID safely."
+                                        } else {
+                                            "এই Gmail দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে। নতুন অ্যাকাউন্ট তৈরি না করে Google Sign-In অথবা আপনার আগের পাসওয়ার্ড দিয়ে নিরাপদে অ্যাকাউন্ট পুনরুদ্ধার করুন।"
+                                        }
+                                    },
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.5.sp,
+                                    color = Color(0xFF78350F)
+                                )
+
+                                Button(
+                                    onClick = triggerGoogleSignUp,
+                                    enabled = !isGoogleSigningUp && !isVerifyingExistingPassword,
+                                    colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .testTag("reg_recovery_google_button")
+                                ) {
+                                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (AppLanguageManager.isEnglish()) {
+                                            "Verify with Google & Recover UID"
+                                        } else {
+                                            "Google দিয়ে যাচাই ও অ্যাকাউন্ট পুনরুদ্ধার"
+                                        },
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+
+                                if (existingAccountProviderType != AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY) {
+                                    OutlinedTextField(
+                                        value = existingPasswordInput,
+                                        onValueChange = {
+                                            existingPasswordInput = it
+                                            errorMessage = ""
+                                        },
+                                        placeholder = {
+                                            Text(
+                                                text = if (AppLanguageManager.isEnglish()) "Enter existing account password/PIN" else "আগের অ্যাকাউন্টের পাসওয়ার্ড বা পিন দিন",
+                                                fontSize = 12.5.sp,
+                                                color = TextMuted
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Password, contentDescription = null, tint = Color(0xFF718096), modifier = Modifier.size(18.dp))
+                                        },
+                                        trailingIcon = {
+                                            IconButton(onClick = { showExistingPassword = !showExistingPassword }) {
+                                                Icon(
+                                                    imageVector = if (showExistingPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF718096)
+                                                )
+                                            }
+                                        },
+                                        visualTransformation = if (showExistingPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color.White,
+                                            unfocusedContainerColor = Color.White,
+                                            focusedBorderColor = HishabpatiPurple,
+                                            unfocusedBorderColor = Color(0xFFCBD5E1)
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("reg_recovery_password_input")
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            isVerifyingExistingPassword = true
+                                            errorMessage = ""
+                                            focusManager.clearFocus()
+                                            viewModel.verifyExistingPasswordForRegistration(
+                                                email = email.trim(),
+                                                password = existingPasswordInput
+                                            ) { ok, msg, recoveredUser, ownedShops ->
+                                                isVerifyingExistingPassword = false
+                                                if (ok && recoveredUser != null) {
+                                                    authenticatedUser = recoveredUser
+                                                    existingOwnedShops = ownedShops
+                                                    existingAccountProviderType = viewModel.classifyProviderIds(
+                                                        recoveredUser.providerData.mapNotNull { it.providerId }
+                                                    )
+                                                    if (ownedShops.isEmpty() || allowAdditionalShopForExistingOwner) {
+                                                        // Register new shop on recovered UID without creating a duplicate Auth user
+                                                        if (shopName.isNotBlank() && PhoneAuthHelper.isValidBangladeshPhone(phone.trim()) && pin.length == 6 && pin == confirmPin) {
+                                                            isVerifyingOtp = true
+                                                            coroutineScope.launch {
+                                                                viewModel.registerNewShop(
+                                                                    shopName = shopName.trim(),
+                                                                    ownerName = fullOwnerName.ifBlank { recoveredUser.displayName ?: "দোকান স্বত্বাধিকারী" },
+                                                                    phone = phone.trim(),
+                                                                    address = address.ifBlank { district },
+                                                                    district = district,
+                                                                    businessType = selectedBusinessType,
+                                                                    pin = pin.trim(),
+                                                                    isPhoneVerified = false,
+                                                                    ownerEmail = recoveredUser.email ?: email.trim().lowercase(),
+                                                                    ownerUid = recoveredUser.uid,
+                                                                    allowAdditionalShop = true,
+                                                                    superAdminViewModel = superAdminViewModel
+                                                                ) { regOk, regMsg, shopId ->
+                                                                    isVerifyingOtp = false
+                                                                    if (regOk && shopId != null) {
+                                                                        successRegisteredShopId = shopId
+                                                                    } else {
+                                                                        errorMessage = regMsg
+                                                                    }
+                                                                }
+                                                            }
+                                                        } else {
+                                                            recoveryStatusMessage = msg
+                                                        }
+                                                    } else {
+                                                        recoveryStatusMessage = msg
+                                                    }
+                                                } else {
+                                                    errorMessage = msg
+                                                }
+                                            }
+                                        },
+                                        enabled = !isVerifyingExistingPassword,
+                                        border = BorderStroke(1.dp, Color(0xFFB45309)),
+                                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(42.dp)
+                                            .testTag("reg_recovery_verify_password_button")
+                                    ) {
+                                        if (isVerifyingExistingPassword) {
+                                            CircularProgressIndicator(color = Color(0xFFB45309), modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            Text(
+                                                text = if (AppLanguageManager.isEnglish()) {
+                                                    "Verify Existing Password & Continue"
+                                                } else {
+                                                    "আগের পাসওয়ার্ড যাচাই করে এগিয়ে যান"
+                                                },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFB45309)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

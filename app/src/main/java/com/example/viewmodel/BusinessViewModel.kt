@@ -57,6 +57,19 @@ data class PendingPinSetupInfo(
     val message: String
 )
 
+// Result of Step 1 Firebase Authentication & Firestore Shop Ownership Audit
+data class EmailAuthAuditResult(
+    val email: String,
+    val exists: Boolean,
+    val providerType: AppErrorHandler.EmailAuthProviderType,
+    val hasGoogleProvider: Boolean,
+    val hasPasswordProvider: Boolean,
+    val hasExistingShop: Boolean = false,
+    val shopCount: Int = 0,
+    val existingUid: String? = null,
+    val existingShops: List<PlatformBusiness> = emptyList()
+)
+
 // Sanitized stock view for Salesman (purchase price hidden)
 data class SalesmanProductView(
     val id: String,
@@ -105,6 +118,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     fun refreshActiveBusinessId() {
         _activeBusinessId.value = getActiveBusinessId()
+    }
+
+    private val _loginProviderHint = MutableStateFlow(AppErrorHandler.EmailAuthProviderType.UNKNOWN)
+    val loginProviderHint: StateFlow<AppErrorHandler.EmailAuthProviderType> = _loginProviderHint.asStateFlow()
+
+    fun clearLoginProviderHint() {
+        _loginProviderHint.value = AppErrorHandler.EmailAuthProviderType.UNKNOWN
     }
 
     fun triggerSync(onResult: ((Boolean, String) -> Unit)? = null) {
@@ -479,11 +499,13 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
             var cloudPinHash = ""
             try {
-                if (com.google.firebase.FirebaseApp.getApps(getApplication()).isNotEmpty()) {
-                    val staffDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                        .collection("businesses").document(resolvedShopId)
-                        .collection("staff").document(uid).get().await()
-                    if (staffDoc.exists()) {
+                if (com.google.firebase.FirebaseApp.getApps(getApplication()).isNotEmpty() && fUser != null) {
+                    val staffDoc = withTimeoutOrNull(3500L) {
+                        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                            .collection("businesses").document(resolvedShopId)
+                            .collection("staff").document(uid).get().await()
+                    }
+                    if (staffDoc != null && staffDoc.exists()) {
                         cloudPinHash = staffDoc.getString("pinHash") ?: ""
                     }
                 }
@@ -1349,9 +1371,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * Registers a new shop with the owner as Admin.
-     * Prevents duplicate phone registration.
-     * Hashes PIN securely (SHA-256).
-     * Connects directly with Platform Super Admin repository with Default Free Policy.
+     * Prevents duplicate phone registration across different users, supports completing incomplete stub
+     * registrations without creating duplicate documents, preserves existing Firebase UID, and supports
+     * adding multiple shops under the same verified owner account when allowAdditionalShop is true.
      */
     fun registerNewShop(
         shopName: String,
@@ -1364,61 +1386,158 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         isPhoneVerified: Boolean = false,
         ownerEmail: String = "",
         ownerUid: String = "",
+        allowAdditionalShop: Boolean = false,
         superAdminViewModel: SuperAdminViewModel? = null,
         onResult: (Boolean, String, String?) -> Unit // success, message, shopId
     ) {
         viewModelScope.launch {
             try {
+                val duplicateAccountMessage =
+                    "এই Gmail বা ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে। নতুন দোকান তৈরি না করে আগের অ্যাকাউন্টে লগইন করুন।"
+
                 // Normalize Bengali digits (০-৯) to standard digits (0-9)
-                val normalizedPhone = phone.trim()
-                    .replace('০', '0').replace('১', '1').replace('২', '2')
-                    .replace('৩', '3').replace('৪', '4').replace('৫', '5')
-                    .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+                val normalizedPhone = CloudBusinessAuth.normalizePhone(
+                    phone.trim()
+                        .replace('০', '0').replace('১', '1').replace('২', '2')
+                        .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                        .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+                ).ifBlank { phone.trim() }
+
                 val normalizedPin = pin.trim()
                     .replace('০', '0').replace('১', '1').replace('২', '2')
                     .replace('৩', '3').replace('৪', '4').replace('৫', '5')
                     .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
 
                 val currentAuth = try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
-                val effectiveOwnerUid = if (ownerUid.isNotBlank()) ownerUid else (currentAuth?.uid ?: "")
-                val effectiveEmail = if (ownerEmail.isNotBlank()) ownerEmail else (currentAuth?.email ?: "")
+                val effectiveOwnerUid = ownerUid.ifBlank { currentAuth?.uid ?: "" }
+                val effectiveEmail = ownerEmail.ifBlank { currentAuth?.email ?: "" }.trim().lowercase()
 
-                // Check duplicate phone only if claimed by a completely different user
                 val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
-                val claimedByOtherOwner = superAdminRepo.businesses.value.any {
-                    it.ownerPhone == normalizedPhone &&
-                    ((it.ownerUid.isNotBlank() && effectiveOwnerUid.isNotBlank() && it.ownerUid != effectiveOwnerUid) ||
-                     (it.ownerEmail.isNotBlank() && effectiveEmail.isNotBlank() && !it.ownerEmail.equals(effectiveEmail, ignoreCase = true)))
+
+                // Helper to detect an incomplete placeholder/stub shop document
+                fun isStubShop(biz: PlatformBusiness): Boolean {
+                    return biz.businessName.isBlank() ||
+                        biz.businessName.startsWith("ব্যবসা #") ||
+                        (biz.id == biz.ownerUid && biz.ownerPhone.isBlank() && biz.address.isBlank()) ||
+                        (biz.ownerPhone.isBlank() && biz.address.isBlank())
+                }
+
+                // Helper to check if a shop belongs to this same owner
+                fun belongsToThisOwner(biz: PlatformBusiness): Boolean {
+                    val uidMatch = effectiveOwnerUid.isNotBlank() &&
+                        (biz.ownerUid == effectiveOwnerUid || biz.id == effectiveOwnerUid)
+                    val emailMatch = effectiveEmail.isNotBlank() &&
+                        biz.ownerEmail.isNotBlank() &&
+                        biz.ownerEmail.equals(effectiveEmail, ignoreCase = true)
+                    val bothHaveDistinctUids = effectiveOwnerUid.isNotBlank() &&
+                        biz.ownerUid.isNotBlank() &&
+                        !biz.ownerUid.startsWith("admin_") &&
+                        effectiveOwnerUid != biz.ownerUid
+                    if (bothHaveDistinctUids) {
+                        return currentAuth?.email?.trim()?.lowercase() == effectiveEmail
+                    }
+                    return uidMatch || emailMatch
+                }
+
+                // 1. Check duplicate phone or email claimed by a completely different user
+                val claimedByOtherOwner = superAdminRepo.businesses.value.any { biz ->
+                    val phoneMatches = normalizedPhone.isNotBlank() &&
+                        CloudBusinessAuth.matchesPhone(biz.ownerPhone, normalizedPhone)
+                    val emailMatches = effectiveEmail.isNotBlank() &&
+                        biz.ownerEmail.isNotBlank() &&
+                        biz.ownerEmail.equals(effectiveEmail, ignoreCase = true)
+                    (phoneMatches || emailMatches) && !belongsToThisOwner(biz)
                 }
 
                 if (claimedByOtherOwner) {
-                    onResult(false, "এই ফোন নম্বরটি ইতিমধ্যে অন্য একজন ব্যবহারকারী কর্তৃক ব্যবহৃত হচ্ছে। আপনার নিজস্ব মোবাইল নম্বর দিন।", null)
+                    onResult(false, duplicateAccountMessage, null)
                     return@launch
                 }
 
-                // Check if this is the first shop filling an empty stub doc (e.g. UID as doc id)
-                val isFirstShopStub = if (effectiveOwnerUid.isNotBlank() && superAdminRepo.isFirebaseConfigured()) {
+                // Also check remote registered_phones index when signed in with Firebase
+                if (superAdminRepo.isFirebaseConfigured() && currentAuth != null && normalizedPhone.isNotBlank()) {
                     try {
-                        val directDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                            .collection("businesses").document(effectiveOwnerUid).get().await()
-                        directDoc.exists() && (directDoc.getString("businessName").isNullOrBlank() || directDoc.getString("address").isNullOrBlank())
-                    } catch (_: Exception) { false }
-                } else false
-
-                val shopId = if (isFirstShopStub) {
-                    effectiveOwnerUid
-                } else {
-                    "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
+                        val firestore = FirebaseFirestore.getInstance()
+                        val regPhoneDoc = withTimeoutOrNull(3500L) {
+                            firestore.collection("registered_phones").document(normalizedPhone).get().await()
+                        }
+                        if (regPhoneDoc != null && regPhoneDoc.exists()) {
+                            val remoteOwnerUid = regPhoneDoc.getString("ownerUid")?.trim().orEmpty()
+                            val remoteOwnerEmail = regPhoneDoc.getString("ownerEmail")?.trim()?.lowercase().orEmpty()
+                            val remoteBizId = regPhoneDoc.getString("businessId")?.trim().orEmpty()
+                            val sameOwnerOnRemote = (effectiveOwnerUid.isNotBlank() && (remoteOwnerUid == effectiveOwnerUid || remoteBizId == effectiveOwnerUid)) ||
+                                (effectiveEmail.isNotBlank() && remoteOwnerEmail == effectiveEmail)
+                            if (!sameOwnerOnRemote) {
+                                onResult(false, duplicateAccountMessage, null)
+                                return@launch
+                            }
+                        }
+                    } catch (pe: Exception) {
+                        if (pe.message?.contains("PERMISSION_DENIED", ignoreCase = true) == true) {
+                            // registered_phones security rules deny read when another owner owns the phone document
+                            onResult(false, duplicateAccountMessage, null)
+                            return@launch
+                        }
+                    }
                 }
 
+                // 2. Discover existing shops owned by this user (local + remote if signed in)
+                val ownerExistingShops = if (effectiveOwnerUid.isNotBlank() || effectiveEmail.isNotBlank()) {
+                    superAdminRepo.findAllBusinessesByOwner(effectiveOwnerUid, effectiveEmail, "").filter {
+                        belongsToThisOwner(it)
+                    }
+                } else {
+                    emptyList()
+                }
+
+                var stubShopId: String? = ownerExistingShops.firstOrNull { isStubShop(it) }?.id
+
+                // Also check direct stub document businesses/{effectiveOwnerUid} in Firestore if signed in
+                if (stubShopId == null && effectiveOwnerUid.isNotBlank() && superAdminRepo.isFirebaseConfigured() && currentAuth != null) {
+                    try {
+                        val directDoc = withTimeoutOrNull(3500L) {
+                            FirebaseFirestore.getInstance()
+                                .collection("businesses").document(effectiveOwnerUid).get().await()
+                        }
+                        if (directDoc != null && directDoc.exists() &&
+                            (directDoc.getString("businessName").isNullOrBlank() ||
+                             directDoc.getString("ownerPhone").isNullOrBlank() ||
+                             directDoc.getString("address").isNullOrBlank())
+                        ) {
+                            stubShopId = effectiveOwnerUid
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                // 3. Check if owner already has completed shops and did not explicitly choose to add another shop
+                val completedExistingShops = ownerExistingShops.filter { !isStubShop(it) }
+                if (completedExistingShops.isNotEmpty() && !allowAdditionalShop && stubShopId == null) {
+                    onResult(false, duplicateAccountMessage, completedExistingShops.first().id)
+                    return@launch
+                }
+
+                val shopId = stubShopId ?: "biz_${System.currentTimeMillis()}_${(1000..9999).random()}"
                 val effectiveAuthUid = if (effectiveOwnerUid.isNotBlank()) effectiveOwnerUid else "admin_${System.currentTimeMillis()}"
+
+                val providerList = currentAuth?.providerData
+                    ?.mapNotNull { it.providerId }
+                    ?.filter { it != "firebase" }
+                    ?: emptyList()
+                val resolvedAuthProvider = when {
+                    providerList.contains("google.com") && providerList.contains("password") -> "google.com,password"
+                    providerList.contains("google.com") -> "google.com"
+                    providerList.contains("password") -> "password"
+                    isPhoneVerified || !currentAuth?.phoneNumber.isNullOrBlank() -> "phone"
+                    effectiveEmail.isNotBlank() -> "password"
+                    else -> "phone"
+                }
 
                 val platformBiz = PlatformBusiness(
                     id = shopId,
                     businessName = shopName.trim(),
                     ownerUid = effectiveAuthUid,
                     ownerName = ownerName.trim(),
-                    ownerEmail = effectiveEmail.trim().lowercase(),
+                    ownerEmail = effectiveEmail,
                     ownerPhone = normalizedPhone,
                     status = BusinessAccountStatus.PENDING,
                     planId = "plan_free",
@@ -1438,9 +1557,17 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     notes = "নতুন দোকানদার স্ব-নিবন্ধন (সুপার এডমিন অনুমোদনের অপেক্ষায়)"
                 )
 
-                // 1. Enterprise Cloud Function Registration (when Phone Auth is verified)
+                // 4. Server persistence:
+                // Only invoke phone-specific Cloud Function when user authenticated purely via Firebase Phone OTP.
+                // Google & Email/Password users keep their exact Firebase Auth UID without custom-token UID replacement!
                 var cloudFunctionSucceeded = false
-                if (superAdminRepo.isFirebaseConfigured()) {
+                val isPurePhoneAuthSession = currentAuth != null &&
+                    !currentAuth.phoneNumber.isNullOrBlank() &&
+                    !providerList.contains("google.com") &&
+                    !providerList.contains("password") &&
+                    isPhoneVerified
+
+                if (superAdminRepo.isFirebaseConfigured() && isPurePhoneAuthSession) {
                     val idToken = try {
                         currentAuth?.getIdToken(false)?.await()?.token ?: ""
                     } catch (_: Exception) { "" }
@@ -1468,7 +1595,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
 
-                // 2. Direct Firestore fallback if Cloud Function was not invoked (e.g. offline/direct Google link)
+                // Primary UID-preserving Firestore & Local Room persistence for Google / Email / Offline / Multi-shop owners
                 if (!cloudFunctionSucceeded) {
                     val cloudResult = superAdminRepo.registerNewShop(platformBiz)
                     if (cloudResult.isFailure) {
@@ -1478,7 +1605,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                         return@launch
                     }
 
-                    // Now persist safely to local Room database
+                    // Persist safely to local Room database with exact ownerId
                     val repoResult = repository.registerNewShop(
                         shopName = shopName,
                         ownerName = ownerName,
@@ -1487,7 +1614,8 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                         district = district,
                         businessType = businessType,
                         pin = normalizedPin,
-                        shopId = shopId
+                        shopId = shopId,
+                        ownerId = effectiveAuthUid
                     )
 
                     if (repoResult.isFailure) {
@@ -1496,23 +1624,25 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
 
-                val newAdmin = repository.getUserByPhone(normalizedPhone) ?: User(
+                val hashedPin = repository.hashPin(normalizedPin)
+                val newAdmin = User(
                     id = effectiveAuthUid,
                     name = ownerName.trim(),
                     phone = normalizedPhone,
                     role = UserRole.ADMIN,
-                    pinHash = repository.hashPin(normalizedPin),
+                    pinHash = hashedPin,
                     isActive = true,
                     accountStatus = UserAccountStatus.ACTIVE,
                     shopId = shopId
                 )
+                repository.saveUserDirect(newAdmin)
 
-                // Link Google credentials if provided
-                if (effectiveAuthUid.isNotBlank() || ownerEmail.isNotBlank()) {
+                // Link Google/Email credentials to this shop while preserving UID
+                if (effectiveAuthUid.isNotBlank() || effectiveEmail.isNotBlank()) {
                     CloudBusinessAuth.setLinkedGoogleAccount(
                         context = getApplication(),
                         uid = effectiveAuthUid,
-                        email = ownerEmail,
+                        email = effectiveEmail,
                         userId = newAdmin.id,
                         shopId = shopId
                     )
@@ -1537,13 +1667,39 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 _currentUser.value = newAdmin
 
                 try {
-                    if (superAdminRepo.isFirebaseConfigured() || syncManager.isCloudBackendConfigured()) {
+                    if (superAdminRepo.isFirebaseConfigured() && currentAuth != null) {
                         syncManager.ensureBusinessDocExists(shopId, effectiveAuthUid, shopName.trim())
                         syncManager.ensureStaffLinked(shopId, effectiveAuthUid, newAdmin.phone, newAdmin.name, UserRole.ADMIN.name)
+                        // Also record authProvider and pinHash on Firestore docs for cross-device login & audit accuracy
+                        val firestore = FirebaseFirestore.getInstance()
+                        withTimeoutOrNull(4000L) {
+                            firestore.collection("businesses").document(shopId).set(
+                                mapOf(
+                                    "authProvider" to resolvedAuthProvider,
+                                    "ownerEmail" to effectiveEmail
+                                ),
+                                SetOptions.merge()
+                            ).await()
+                            firestore.collection("businesses").document(shopId)
+                                .collection("staff").document(effectiveAuthUid)
+                                .set(
+                                    mapOf(
+                                        "id" to effectiveAuthUid,
+                                        "name" to newAdmin.name,
+                                        "phone" to newAdmin.phone,
+                                        "email" to effectiveEmail,
+                                        "role" to UserRole.ADMIN.name,
+                                        "pinHash" to hashedPin,
+                                        "isActive" to true,
+                                        "businessId" to shopId
+                                    ),
+                                    SetOptions.merge()
+                                ).await()
+                        }
                     }
                     superAdminViewModel?.refreshBusinesses()
                 } catch (e: Exception) {
-                    Log.w("RegisterShop", "Cloud linking skipped: ${e.message}")
+                    Log.w("RegisterShop", "Cloud linking note: ${e.message}")
                 }
 
                 onResult(true, "অভিনন্দন! আপনার দোকান সফলভাবে নিবন্ধিত হয়েছে।", shopId)
@@ -1589,11 +1745,14 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 if (cloudBiz != null) {
                     var cloudPinHash = ""
                     try {
-                        if (FirebaseApp.getApps(getApplication()).isNotEmpty()) {
-                            val staffDoc = FirebaseFirestore.getInstance()
-                                .collection("businesses").document(cloudBiz.id)
-                                .collection("staff").document(cloudBiz.ownerUid).get().await()
-                            if (staffDoc.exists()) {
+                        val currentFUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
+                        if (FirebaseApp.getApps(getApplication()).isNotEmpty() && currentFUser != null) {
+                            val staffDoc = withTimeoutOrNull(3500L) {
+                                FirebaseFirestore.getInstance()
+                                    .collection("businesses").document(cloudBiz.id)
+                                    .collection("staff").document(cloudBiz.ownerUid).get().await()
+                            }
+                            if (staffDoc != null && staffDoc.exists()) {
                                 cloudPinHash = staffDoc.getString("pinHash") ?: ""
                             }
                         }
@@ -2003,20 +2162,26 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
 
             // 2. Discover all shops owned by this user (supporting multi-store owners)
             val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
-            val allOwnedShops = superAdminRepo.findAllBusinessesByOwner(uid, cleanEmail, phone)
+            val rawOwnedShops = superAdminRepo.findAllBusinessesByOwner(uid, cleanEmail, phone)
+            val completedOwnedShops = rawOwnedShops.filter { biz ->
+                !(biz.businessName.isBlank() ||
+                    biz.businessName.startsWith("ব্যবসা #") ||
+                    (biz.id == biz.ownerUid && biz.ownerPhone.isBlank() && biz.address.isBlank()) ||
+                    (biz.ownerPhone.isBlank() && biz.address.isBlank()))
+            }
 
-            if (allOwnedShops.size > 1) {
+            if (completedOwnedShops.size > 1) {
                 _pendingShopSelection.value = PendingShopSelection(
                     userUid = uid,
                     userEmail = cleanEmail,
                     userName = name,
                     userPhone = phone,
-                    availableShops = allOwnedShops
+                    availableShops = completedOwnedShops
                 )
                 onResult(true, "দোকান নির্বাচন করুন", UserRole.ADMIN)
                 return@launch
-            } else if (allOwnedShops.size == 1) {
-                val matchedBiz = allOwnedShops.first()
+            } else if (completedOwnedShops.size == 1) {
+                val matchedBiz = completedOwnedShops.first()
                 selectShopAndProceed(matchedBiz, onResult)
                 return@launch
             }
@@ -2358,9 +2523,389 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Classifies Firebase Auth provider IDs ("google.com", "password", etc.) into EmailAuthProviderType.
+     */
+    fun classifyProviderIds(providerIds: Collection<String>): AppErrorHandler.EmailAuthProviderType {
+        val hasGoogle = providerIds.any { it.equals("google.com", ignoreCase = true) }
+        val hasPassword = providerIds.any { it.equals("password", ignoreCase = true) }
+        return when {
+            hasGoogle && hasPassword -> AppErrorHandler.EmailAuthProviderType.GOOGLE_AND_PASSWORD
+            hasGoogle -> AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY
+            hasPassword -> AppErrorHandler.EmailAuthProviderType.PASSWORD_ONLY
+            else -> AppErrorHandler.EmailAuthProviderType.UNKNOWN
+        }
+    }
+
+    /**
+     * Validates standard email format without requiring android.util.Patterns runtime mock.
+     */
+    fun isValidEmailFormat(email: String): Boolean {
+        val clean = email.trim()
+        if (clean.isBlank() || clean.length > 254) return false
+        val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+        return emailRegex.matches(clean)
+    }
+
+    /**
+     * Step 1 — Firebase Authentication & Firestore Shop Ownership Audit (Non-Destructive, Zero Secret Logging).
+     * Inspects Firebase Auth providers ("google.com" vs "password"), UID, and existing shop mappings
+     * safely even when Firebase Email Enumeration Protection is enabled.
+     */
+    suspend fun auditEmailAuthStatus(email: String): EmailAuthAuditResult {
+        val cleanEmail = email.trim().lowercase()
+        if (!isValidEmailFormat(cleanEmail)) {
+            return EmailAuthAuditResult(
+                email = cleanEmail,
+                exists = false,
+                providerType = AppErrorHandler.EmailAuthProviderType.UNKNOWN,
+                hasGoogleProvider = false,
+                hasPasswordProvider = false
+            )
+        }
+
+        val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
+        val currentAuthUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
+        val currentMatchesEmail = currentAuthUser != null &&
+            currentAuthUser.email?.trim()?.lowercase() == cleanEmail
+
+        // 1. Inspect local SuperAdminRepository & CloudBusinessAuth state
+        val localMatchedShops = superAdminRepo.businesses.value.filter {
+            it.ownerEmail.equals(cleanEmail, ignoreCase = true)
+        }.toMutableList()
+
+        val storedGoogleEmail = CloudBusinessAuth.getStoredGoogleEmail(getApplication())
+        val isStoredGoogle = storedGoogleEmail.isNotBlank() && storedGoogleEmail.equals(cleanEmail, ignoreCase = true)
+        val isLinkedGoogle = CloudBusinessAuth.getLinkedUserId(getApplication(), "", cleanEmail) != null ||
+            CloudBusinessAuth.getLinkedShopId(getApplication(), "", cleanEmail) != null
+
+        // 2. Inspect active FirebaseAuth currentUser providerData if signed in as cleanEmail
+        val currentProviderIds = if (currentMatchesEmail) {
+            currentAuthUser?.providerData?.mapNotNull { it.providerId }?.filter { it != "firebase" } ?: emptyList()
+        } else {
+            emptyList()
+        }
+
+        if (currentMatchesEmail && currentAuthUser != null) {
+            try {
+                val discovered = superAdminRepo.findAllBusinessesByOwner(
+                    ownerUid = currentAuthUser.uid,
+                    ownerEmail = cleanEmail,
+                    phone = currentAuthUser.phoneNumber ?: ""
+                )
+                localMatchedShops.addAll(discovered)
+            } catch (_: Exception) {}
+        }
+
+        // 3. Query native fetchSignInMethodsForEmail (returns providers when Enumeration Protection is off)
+        val signInMethods = try {
+            if (superAdminRepo.isFirebaseConfigured()) {
+                withTimeoutOrNull(3500L) {
+                    FirebaseAuth.getInstance().fetchSignInMethodsForEmail(cleanEmail).await().signInMethods
+                } ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.w("AuthAudit", "fetchSignInMethodsForEmail note: ${AppErrorHandler.sanitize(e.message ?: "")}")
+            emptyList<String>()
+        }
+
+        // 4. Query authoritative server Cloud Function auditEmailAuthStatus (handles Enumeration Protection safely)
+        var serverExists = false
+        var serverNotFound = false
+        var serverHasGoogle = false
+        var serverHasPassword = false
+        var serverHasExistingShop = false
+        var serverShopCount = 0
+        var serverUid: String? = null
+        val serverShops = mutableListOf<PlatformBusiness>()
+
+        try {
+            if (superAdminRepo.isFirebaseConfigured()) {
+                val fnResult = withTimeoutOrNull(4500L) {
+                    com.google.firebase.functions.FirebaseFunctions.getInstance()
+                        .getHttpsCallable("auditEmailAuthStatus")
+                        .call(hashMapOf("email" to cleanEmail))
+                        .await()
+                }
+                val map = fnResult?.data as? Map<*, *>
+                if (map != null) {
+                    serverExists = map["exists"] as? Boolean ?: false
+                    val pTypeStr = (map["providerType"] as? String)?.trim()?.uppercase().orEmpty()
+                    if (!serverExists && pTypeStr == "NOT_FOUND") {
+                        serverNotFound = true
+                    }
+                    serverHasGoogle = map["hasGoogleProvider"] as? Boolean ?: false
+                    serverHasPassword = map["hasPasswordProvider"] as? Boolean ?: false
+                    serverHasExistingShop = map["hasExistingShop"] as? Boolean ?: false
+                    serverShopCount = (map["shopCount"] as? Number)?.toInt() ?: 0
+                    serverUid = map["uid"] as? String
+
+                    val rawShops = map["shops"] as? List<*>
+                    rawShops?.forEach { item ->
+                        val sMap = item as? Map<*, *> ?: return@forEach
+                        val sId = (sMap["id"] as? String)?.trim().orEmpty()
+                        if (sId.isNotBlank()) {
+                            val statusStr = (sMap["status"] as? String)?.uppercase() ?: "PENDING"
+                            val statusEnum = try {
+                                BusinessAccountStatus.valueOf(statusStr)
+                            } catch (_: Exception) {
+                                BusinessAccountStatus.PENDING
+                            }
+                            serverShops.add(
+                                PlatformBusiness(
+                                    id = sId,
+                                    businessName = (sMap["businessName"] as? String)?.ifBlank { "আমার দোকান" } ?: "আমার দোকান",
+                                    ownerUid = serverUid ?: currentAuthUser?.uid ?: "",
+                                    ownerName = currentAuthUser?.displayName ?: "",
+                                    ownerEmail = cleanEmail,
+                                    ownerPhone = (sMap["ownerPhone"] as? String).orEmpty(),
+                                    status = statusEnum,
+                                    planName = (sMap["planName"] as? String)?.ifBlank { "সম্পূর্ণ ফ্রি ব্যবহার" } ?: "সম্পূর্ণ ফ্রি ব্যবহার",
+                                    address = (sMap["address"] as? String).orEmpty(),
+                                    district = (sMap["district"] as? String).orEmpty(),
+                                    createdAt = (sMap["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AuthAudit", "Cloud audit fallback note: ${AppErrorHandler.sanitize(e.message ?: "")}")
+        }
+
+        // 5. Also inspect Firestore businesses if caller is authenticated as cleanEmail or Super Admin
+        var cloudDocGoogle = false
+        var cloudDocPassword = false
+        try {
+            val isAuthorizedForDirectQuery = currentAuthUser != null && (
+                currentAuthUser.email?.trim()?.lowercase() == cleanEmail ||
+                    SuperAdminRepository.isSuperAdminEmail(currentAuthUser.email)
+                )
+            if (superAdminRepo.isFirebaseConfigured() && isAuthorizedForDirectQuery) {
+                val snap = withTimeoutOrNull(3500L) {
+                    FirebaseFirestore.getInstance().collection("businesses")
+                        .whereEqualTo("ownerEmail", cleanEmail)
+                        .get()
+                        .await()
+                }
+                snap?.documents?.forEach { doc ->
+                    val ap = doc.getString("authProvider").orEmpty()
+                    if (ap.contains("google", ignoreCase = true)) cloudDocGoogle = true
+                    if (ap.contains("password", ignoreCase = true)) cloudDocPassword = true
+                }
+            }
+        } catch (_: Exception) {}
+
+        val mergedShops = SuperAdminRepository.deduplicateBusinesses(localMatchedShops + serverShops)
+            .filter { biz ->
+                !(biz.businessName.isBlank() ||
+                    biz.businessName.startsWith("ব্যবসা #") ||
+                    (biz.id == biz.ownerUid && biz.ownerPhone.isBlank() && biz.address.isBlank()) ||
+                    (biz.ownerPhone.isBlank() && biz.address.isBlank()))
+            }
+
+        val hasPassword = serverHasPassword ||
+            currentProviderIds.contains("password") ||
+            signInMethods.contains("password") ||
+            cloudDocPassword
+
+        val hasGoogle = serverHasGoogle ||
+            currentProviderIds.contains("google.com") ||
+            signInMethods.contains("google.com") ||
+            cloudDocGoogle ||
+            ((isStoredGoogle || isLinkedGoogle) && !hasPassword)
+
+        val exists = serverExists ||
+            currentMatchesEmail ||
+            signInMethods.isNotEmpty() ||
+            mergedShops.isNotEmpty() ||
+            isStoredGoogle ||
+            isLinkedGoogle
+
+        val providerType = when {
+            !exists && serverNotFound -> AppErrorHandler.EmailAuthProviderType.NOT_FOUND
+            hasGoogle && hasPassword -> AppErrorHandler.EmailAuthProviderType.GOOGLE_AND_PASSWORD
+            hasGoogle && !hasPassword -> AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY
+            !hasGoogle && hasPassword -> AppErrorHandler.EmailAuthProviderType.PASSWORD_ONLY
+            else -> AppErrorHandler.EmailAuthProviderType.UNKNOWN
+        }
+
+        val effectiveUid = currentAuthUser?.uid?.takeIf { currentMatchesEmail }
+            ?: serverUid
+            ?: mergedShops.firstOrNull { it.ownerUid.isNotBlank() }?.ownerUid
+
+        return EmailAuthAuditResult(
+            email = cleanEmail,
+            exists = exists,
+            providerType = providerType,
+            hasGoogleProvider = hasGoogle,
+            hasPasswordProvider = hasPassword,
+            hasExistingShop = mergedShops.isNotEmpty() || serverHasExistingShop,
+            shopCount = maxOf(mergedShops.size, serverShopCount),
+            existingUid = effectiveUid,
+            existingShops = mergedShops
+        )
+    }
+
+    /**
+     * Loads all completed shops owned by the currently authenticated Firebase user (UID / Email / Phone)
+     * so Registration Recovery & Account Linking never duplicate or lose existing stores.
+     */
+    suspend fun loadOwnedShopsForCurrentUser(): List<PlatformBusiness> {
+        val currentUser = try { FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
+            ?: return emptyList()
+        val superAdminRepo = SuperAdminRepository.getInstance(getApplication())
+        try {
+            if (superAdminRepo.isFirebaseConfigured()) {
+                withTimeoutOrNull(4500L) {
+                    superAdminRepo.refreshBusinessesFromRemote()
+                }
+            }
+        } catch (_: Exception) {}
+
+        val shops = superAdminRepo.findAllBusinessesByOwner(
+            ownerUid = currentUser.uid,
+            ownerEmail = currentUser.email.orEmpty(),
+            phone = currentUser.phoneNumber.orEmpty()
+        )
+        return shops.filter { biz ->
+            !(biz.businessName.isBlank() ||
+                biz.businessName.startsWith("ব্যবসা #") ||
+                (biz.id == biz.ownerUid && biz.ownerPhone.isBlank() && biz.address.isBlank()) ||
+                (biz.ownerPhone.isBlank() && biz.address.isBlank()))
+        }
+    }
+
+    /**
+     * Safely authenticates an existing Email/Password Firebase user on their EXISTING UID
+     * during Shop Registration recovery without calling createUserWithEmailAndPassword.
+     */
+    fun verifyExistingPasswordForRegistration(
+        email: String,
+        password: String,
+        onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?, List<PlatformBusiness>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanEmail = email.trim().lowercase()
+            val cleanPass = password.trim()
+                .replace('০', '0').replace('১', '1').replace('২', '2')
+                .replace('৩', '3').replace('৪', '4').replace('৫', '5')
+                .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
+
+            if (!isValidEmailFormat(cleanEmail)) {
+                onResult(false, "সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!", null, emptyList())
+                return@launch
+            }
+            if (cleanPass.length < 4) {
+                onResult(false, "আগের অ্যাকাউন্টের পাসওয়ার্ড বা পিন লিখুন!", null, emptyList())
+                return@launch
+            }
+
+            try {
+                FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
+                val preAudit = auditEmailAuthStatus(cleanEmail)
+                if (preAudit.providerType == AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY) {
+                    onResult(false, com.example.util.AppStrings.googleOnlyAccountNotice, null, emptyList())
+                    return@launch
+                }
+
+                val auth = FirebaseAuth.getInstance()
+                val authResult = try {
+                    withTimeoutOrNull(10000L) {
+                        auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
+                    } ?: throw java.net.SocketTimeoutException("Login request timed out")
+                } catch (initialEx: Exception) {
+                    if (cleanPass.length == 4 && cleanPass.all { it.isDigit() }) {
+                        try {
+                            withTimeoutOrNull(8000L) {
+                                auth.signInWithEmailAndPassword(cleanEmail, "${cleanPass}99").await()
+                            } ?: throw initialEx
+                        } catch (_: Exception) {
+                            throw initialEx
+                        }
+                    } else {
+                        throw initialEx
+                    }
+                }
+
+                val user = authResult.user
+                if (user != null) {
+                    val existingShops = loadOwnedShopsForCurrentUser()
+                    onResult(true, "অ্যাকাউন্ট যাচাই সফল হয়েছে! UID: ${user.uid}", user, existingShops)
+                } else {
+                    onResult(false, AppErrorHandler.map(null).toUserMessage(), null, emptyList())
+                }
+            } catch (e: Exception) {
+                val postAudit = auditEmailAuthStatus(cleanEmail)
+                val appError = AppErrorHandler.mapLoginError(e, postAudit.providerType)
+                onResult(false, appError.toUserMessage(), null, emptyList())
+            }
+        }
+    }
+
+    /**
+     * Safely links an Email/Password provider credential to the currently authenticated Google user
+     * on their EXISTING UID (Firebase linkWithCredential) without creating a duplicate UID.
+     */
+    fun linkPasswordProviderToCurrentUser(
+        password: String,
+        onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val cleanPass = password.trim()
+            if (cleanPass.length < 6) {
+                onResult(false, "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে!", null)
+                return@launch
+            }
+            try {
+                val user = FirebaseAuth.getInstance().currentUser
+                val userEmail = user?.email?.trim()?.lowercase()
+                if (user == null || userEmail.isNullOrBlank()) {
+                    onResult(false, "প্রথমে Google দিয়ে সাইন ইন করুন।", null)
+                    return@launch
+                }
+                if (user.providerData.any { it.providerId == "password" }) {
+                    onResult(true, "এই অ্যাকাউন্টে পাসওয়ার্ড ইতিমধ্যে যুক্ত রয়েছে।", user)
+                    return@launch
+                }
+                val credential = com.google.firebase.auth.EmailAuthProvider.getCredential(userEmail, cleanPass)
+                val linkedResult = user.linkWithCredential(credential).await()
+                val linkedUser = linkedResult.user ?: user
+                onResult(true, "আপনার অ্যাকাউন্টে পাসওয়ার্ড নিরাপদভাবে যুক্ত হয়েছে (UID অপরিবর্তিত)।", linkedUser)
+            } catch (e: Exception) {
+                onResult(false, AppErrorHandler.map(e).toUserMessage(), null)
+            }
+        }
+    }
+
+    /**
+     * Safely links a Google credential to the currently signed-in Firebase user (preserving existing UID).
+     */
+    fun linkGoogleCredentialToCurrentUser(
+        idToken: String,
+        onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val user = FirebaseAuth.getInstance().currentUser
+                if (user == null) {
+                    onResult(false, "কোনো সক্রিয় সেশন নেই।", null)
+                    return@launch
+                }
+                val credential = com.google.firebase.auth.GoogleAuthProvider.getCredential(idToken, null)
+                val linkedResult = user.linkWithCredential(credential).await()
+                onResult(true, "Google অ্যাকাউন্ট নিরাপদভাবে লিংক হয়েছে (UID অপরিবর্তিত)।", linkedResult.user ?: user)
+            } catch (e: Exception) {
+                onResult(false, AppErrorHandler.map(e).toUserMessage(), null)
+            }
+        }
+    }
+
+    /**
      * Firebase Spark 100% Free: Native Email/Password Registration.
-     * Creates Firebase Auth user and sends official verification email.
-     * Does NOT create active shop ownership in Firestore until email is verified.
+     * Audits existing account first so duplicate Gmail accounts never attempt createUserWithEmailAndPassword.
      */
     fun registerWithEmailPassword(
         email: String,
@@ -2370,7 +2915,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val cleanEmail = email.trim().lowercase()
             val cleanPass = password.trim()
-            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            if (!isValidEmailFormat(cleanEmail)) {
                 onResult(false, "সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!", null)
                 return@launch
             }
@@ -2381,11 +2926,34 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             try {
                 FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-                val authResult = auth.createUserWithEmailAndPassword(cleanEmail, cleanPass).await()
+                val current = auth.currentUser
+                if (current != null && current.email?.trim()?.lowercase() == cleanEmail) {
+                    onResult(true, "আপনার জিমেইল (${cleanEmail}) ইতিমধ্যে যাচাইকৃত সেশনে যুক্ত আছে।", current)
+                    return@launch
+                }
+
+                // Step 4: Audit before attempting createUserWithEmailAndPassword
+                val audit = auditEmailAuthStatus(cleanEmail)
+                if (audit.exists) {
+                    val existMsg = when (audit.providerType) {
+                        AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY ->
+                            "ACCOUNT_EXISTS_GOOGLE_ONLY: এই Gmail (${cleanEmail}) দিয়ে ইতিমধ্যে Google Sign-In অ্যাকাউন্ট তৈরি করা আছে। নিচের 'Google দিয়ে যাচাই ও দোকান খুলুন' বাটনে চাপ দিন।"
+                        else ->
+                            "ACCOUNT_EXISTS_EXISTING_UID: এই Gmail (${cleanEmail}) দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে। নতুন অ্যাকাউন্ট তৈরি না করে নিচে পাসওয়ার্ড বা Google দিয়ে যাচাই করুন।"
+                    }
+                    onResult(false, existMsg, null)
+                    return@launch
+                }
+
+                val authResult = withTimeoutOrNull(10000L) {
+                    auth.createUserWithEmailAndPassword(cleanEmail, cleanPass).await()
+                } ?: throw java.net.SocketTimeoutException("Registration request timed out")
                 val user = authResult.user
                 if (user != null) {
                     try {
-                        user.sendEmailVerification().await()
+                        withTimeoutOrNull(4000L) {
+                            user.sendEmailVerification().await()
+                        }
                     } catch (e: Exception) {
                         Log.w("EmailAuth", "Email verification send note: ${e.message}")
                     }
@@ -2452,8 +3020,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Firebase Spark 100% Free: Native Email/Password Login.
+     * Firebase Spark 100% Free: Native Email/Password Login with Provider-Aware Error Diagnostics.
      * Supports modern 6-digit PINs, standard passwords, and seamless legacy 4-digit PIN fallback.
+     * Audits the account provider on failure so Google-only users are never shown "Wrong Password".
      */
     fun loginWithEmailPassword(
         email: String,
@@ -2461,18 +3030,25 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         onResult: (Boolean, String, UserRole?) -> Unit
     ) {
         viewModelScope.launch {
+            _loginProviderHint.value = AppErrorHandler.EmailAuthProviderType.UNKNOWN
             val cleanEmail = email.trim().lowercase()
             val cleanPass = password.trim()
                 .replace('০', '0').replace('১', '1').replace('২', '2')
                 .replace('৩', '3').replace('৪', '4').replace('৫', '5')
                 .replace('৬', '6').replace('৭', '7').replace('৮', '8').replace('৯', '9')
 
-            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-                onResult(false, "সঠিক জিমেইল ঠিকানা লিখুন!", null)
+            if (!isValidEmailFormat(cleanEmail)) {
+                val invalidEmailErr = AppErrorHandler.map(IllegalArgumentException("invalid-email"))
+                onResult(false, invalidEmailErr.toUserMessage(), null)
                 return@launch
             }
             if (cleanPass.isBlank()) {
-                onResult(false, "পাসওয়ার্ড বা পিন লিখুন!", null)
+                val emptyPassMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
+                    "Problem: Password or PIN is required.\nWhat to do: Enter your password/PIN or tap 'Continue with Google'."
+                } else {
+                    "সমস্যা: পাসওয়ার্ড বা পিন দেওয়া হয়নি।\nকরণীয়: পাসওয়ার্ড বা পিন লিখুন অথবা 'Google দিয়ে প্রবেশ করুন' ব্যবহার করুন।"
+                }
+                onResult(false, emptyPassMsg, null)
                 return@launch
             }
 
@@ -2483,7 +3059,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 var usedLegacy4DigitSuffix = false
 
                 try {
-                    authResult = auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
+                    authResult = withTimeoutOrNull(10000L) {
+                        auth.signInWithEmailAndPassword(cleanEmail, cleanPass).await()
+                    } ?: throw java.net.SocketTimeoutException("Login request timed out")
                 } catch (initialEx: Exception) {
                     // If the user entered a 4-digit PIN from the legacy registration system (which appended "99"),
                     // seamlessly authenticate using "${cleanPass}99" so the user is never locked out!
@@ -2492,7 +3070,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                          initialEx.message?.contains("credential", ignoreCase = true) == true ||
                          initialEx.message?.contains("password", ignoreCase = true) == true)) {
                         try {
-                            authResult = auth.signInWithEmailAndPassword(cleanEmail, "${cleanPass}99").await()
+                            authResult = withTimeoutOrNull(8000L) {
+                                auth.signInWithEmailAndPassword(cleanEmail, "${cleanPass}99").await()
+                            } ?: throw initialEx
                             usedLegacy4DigitSuffix = true
                             Log.i("Auth", "Legacy 4-digit PIN authenticated successfully with legacy suffix.")
                         } catch (_: Exception) {
@@ -2519,16 +3099,28 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                     onResult(false, AppErrorHandler.map(null).toUserMessage(), null)
                 }
             } catch (e: Exception) {
-                val appError = AppErrorHandler.map(e)
+                val baseCheck = AppErrorHandler.map(e)
+                val auditedProvider = if (baseCheck.rawErrorCode == "NETWORK_UNAVAILABLE" ||
+                    baseCheck.rawErrorCode == "TIMEOUT" ||
+                    baseCheck.rawErrorCode == "TOO_MANY_REQUESTS"
+                ) {
+                    AppErrorHandler.EmailAuthProviderType.UNKNOWN
+                } else {
+                    auditEmailAuthStatus(cleanEmail).providerType
+                }
+                _loginProviderHint.value = auditedProvider
+                val appError = AppErrorHandler.mapLoginError(e, auditedProvider)
                 onResult(false, appError.toUserMessage(), null)
             }
         }
     }
 
     /**
-     * Firebase Password Reset with Account Provider Detection.
-     * Accurately distinguishes Google-only accounts from Email/Password accounts,
-     * guides Google users to 1-click Google Sign-In, and returns compliant acceptance status.
+     * Firebase Password Reset with Account Provider Detection — completely isolated from Login's error handler.
+     * - Validates email independently before sending.
+     * - Never sends a password reset email on Google-only accounts (guides user to 1-click Google Sign-In).
+     * - Sends Firebase sendPasswordResetEmail() when Password provider is present or under Enumeration Protection.
+     * - Clearly reports that Firebase accepted the request (without claiming Gmail arrival) and directs to Inbox, Spam, Promotions.
      */
     fun sendPasswordResetEmail(
         email: String,
@@ -2545,13 +3137,9 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     ) {
         viewModelScope.launch {
             val cleanEmail = email.trim().lowercase()
-            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-                val invalidMsg = if (com.example.util.AppLanguageManager.isEnglish()) {
-                    "Problem: Invalid email format.\nWhat to do: Please enter a valid Gmail address (e.g. user@gmail.com)."
-                } else {
-                    "সমস্যা: ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।\nকরণীয়: অনুগ্রহ করে সঠিক জিমেইল লিখুন (যেমন: user@gmail.com)।"
-                }
-                onResult(false, false, invalidMsg)
+            if (!isValidEmailFormat(cleanEmail)) {
+                val invalidErr = AppErrorHandler.mapPasswordResetError(IllegalArgumentException("invalid-email"))
+                onResult(false, false, invalidErr.toUserMessage())
                 return@launch
             }
 
@@ -2559,66 +3147,29 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 FirebaseInitHelper.ensureFirebaseInitialized(getApplication())
                 val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
 
-                // Step 1: Detect sign-in methods registered in Firebase Auth
-                val signInMethods = try {
-                    auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods ?: emptyList()
-                } catch (e: Exception) {
-                    Log.w("PasswordReset", "fetchSignInMethodsForEmail note: ${e.message}")
-                    emptyList<String>()
-                }
+                // Step 1: Audit provider status independently from Login's error handler
+                val audit = auditEmailAuthStatus(cleanEmail)
 
-                // Step 2: Check Firestore & local persistence for Google-only origin
-                var registeredWithGoogleInCloud = false
-                try {
-                    val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                    val snap = firestore.collection("businesses")
-                        .whereEqualTo("ownerEmail", cleanEmail)
-                        .limit(2)
-                        .get()
-                        .await()
-                    registeredWithGoogleInCloud = snap.documents.any { doc ->
-                        val authProvider = doc.getString("authProvider") ?: ""
-                        authProvider.contains("google", ignoreCase = true)
-                    }
-                } catch (_: Exception) {
-                    // Safe network fallback
-                }
-
-                val storedGoogleEmail = CloudBusinessAuth.getStoredGoogleEmail(getApplication())
-                val isStoredGoogleAccount = storedGoogleEmail.isNotBlank() && storedGoogleEmail.equals(cleanEmail, ignoreCase = true)
-                val isLinkedGoogleAccount = CloudBusinessAuth.getLinkedUserId(getApplication(), "", cleanEmail) != null ||
-                        CloudBusinessAuth.getLinkedShopId(getApplication(), "", cleanEmail) != null
-                val isCurrentGoogleUser = auth.currentUser?.email?.equals(cleanEmail, ignoreCase = true) == true &&
-                        auth.currentUser?.providerData?.any { it.providerId == "google.com" } == true &&
-                        auth.currentUser?.providerData?.none { it.providerId == "password" } == true
-
-                // Google-only identification:
-                // Account has 'google.com' provider but does NOT have 'password' provider
-                val isGoogleOnly = (signInMethods.contains("google.com") && !signInMethods.contains("password")) ||
-                        isCurrentGoogleUser ||
-                        ((registeredWithGoogleInCloud || isStoredGoogleAccount || isLinkedGoogleAccount) && !signInMethods.contains("password"))
-
-                if (isGoogleOnly) {
-                    val googleOnlyNotice = if (com.example.util.AppLanguageManager.isEnglish()) {
-                        "This account was created with Google Sign-In and has no password.\n\nWhat to do: Please sign in directly using the 'Continue with Google' button below."
-                    } else {
-                        "এই অ্যাকাউন্টটি Google Sign-In দিয়ে তৈরি। এতে কোনো পাসওয়ার্ড নেই।\n\nকরণীয়: অনুগ্রহ করে নিচে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন।"
-                    }
-                    onResult(false, true, googleOnlyNotice)
+                // Step 2: Google-only account -> DO NOT send reset email; guide to Google Sign-In
+                if (audit.providerType == AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY) {
+                    onResult(false, true, com.example.util.AppStrings.googleOnlyForgotPasswordNotice)
                     return@launch
                 }
 
-                // Step 3: Account has password provider (or un-enumerated) -> Send Reset Email
-                auth.sendPasswordResetEmail(cleanEmail).await()
+                // Step 3: Account has Password provider (or Enumeration Protection hides provider) -> call sendPasswordResetEmail()
+                withTimeoutOrNull(8000L) {
+                    auth.sendPasswordResetEmail(cleanEmail).await()
+                } ?: throw java.net.SocketTimeoutException("Password reset request timed out")
 
-                val successMsg = if (signInMethods.contains("google.com") && signInMethods.contains("password")) {
-                    if (com.example.util.AppLanguageManager.isEnglish()) {
-                        "Your password reset request has been accepted. Please check your inbox and Spam/Junk folder.\n(Note: You can also sign in directly using Google)."
-                    } else {
-                        "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ গ্রহণ করা হয়েছে। ইনবক্স ও Spam/Junk ফোল্ডার পরীক্ষা করুন।\n(নোট: আপনার অ্যাকাউন্টে Google-ও যুক্ত রয়েছে, আপনি চাইলে সরাসরি Google দিয়েও প্রবেশ করতে পারেন)।"
+                val successMsg = when (audit.providerType) {
+                    AppErrorHandler.EmailAuthProviderType.GOOGLE_AND_PASSWORD -> {
+                        if (com.example.util.AppLanguageManager.isEnglish()) {
+                            "Your password reset request has been accepted by Firebase. Please check your Gmail Inbox, Spam, and Promotions folders.\n(Note: Google Sign-In is also linked to this account—you can also sign in directly with Google)."
+                        } else {
+                            "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ Firebase-এ গ্রহণ করা হয়েছে। অনুগ্রহ করে Inbox, Spam ও Promotions ফোল্ডার পরীক্ষা করুন।\n(নোট: আপনার অ্যাকাউন্টে Google-ও যুক্ত রয়েছে, আপনি চাইলে সরাসরি Google দিয়েও প্রবেশ করতে পারেন)।"
+                        }
                     }
-                } else {
-                    com.example.util.AppStrings.passwordResetRequestAccepted
+                    else -> com.example.util.AppStrings.passwordResetRequestAccepted
                 }
 
                 onResult(true, false, successMsg)

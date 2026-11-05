@@ -84,14 +84,19 @@ class SuperAdminRepository(
             for (item in list) {
                 val normPhone = CloudBusinessAuth.normalizePhone(item.ownerPhone)
                 val existingIdx = result.indexOfFirst { existing ->
+                    val sameUid = existing.ownerUid.isNotBlank() && item.ownerUid.isNotBlank() && existing.ownerUid == item.ownerUid
+                    val isStubPair = sameUid && (existing.id == existing.ownerUid || item.id == item.ownerUid) &&
+                        (existing.address.isBlank() || existing.ownerPhone.isBlank() || item.address.isBlank() || item.ownerPhone.isBlank())
+                    val sameShopName = existing.businessName.trim().equals(item.businessName.trim(), ignoreCase = true)
+                    val samePhone = normPhone.isNotBlank() && CloudBusinessAuth.matchesPhone(existing.ownerPhone, normPhone)
+                    val sameEmail = existing.ownerEmail.isNotBlank() && item.ownerEmail.isNotBlank() &&
+                        existing.ownerEmail.equals(item.ownerEmail, ignoreCase = true)
+
                     existing.id == item.id ||
-                    (existing.ownerUid.isNotBlank() && item.ownerUid.isNotBlank() && existing.ownerUid == item.ownerUid) ||
-                    (normPhone.isNotBlank() && CloudBusinessAuth.matchesPhone(existing.ownerPhone, normPhone) &&
-                     (existing.businessName.trim().equals(item.businessName.trim(), ignoreCase = true) ||
-                      existing.ownerName.trim().equals(item.ownerName.trim(), ignoreCase = true))) ||
-                    (existing.ownerEmail.isNotBlank() && item.ownerEmail.isNotBlank() &&
-                     existing.ownerEmail.equals(item.ownerEmail, ignoreCase = true) &&
-                     existing.businessName.trim().equals(item.businessName.trim(), ignoreCase = true))
+                        isStubPair ||
+                        (sameUid && sameShopName && samePhone) ||
+                        (samePhone && sameShopName && existing.ownerName.trim().equals(item.ownerName.trim(), ignoreCase = true)) ||
+                        (sameEmail && sameShopName)
                 }
                 if (existingIdx >= 0) {
                     val existing = result[existingIdx]
@@ -1198,7 +1203,7 @@ class SuperAdminRepository(
         val e164Phone = CloudBusinessAuth.normalizeToE164(rawPhone)
         val effectivePhone = localPhone.ifBlank { rawPhone }
 
-        if (isFirebaseConfigured()) {
+        if (isFirebaseConfigured() && isUserSignedIn()) {
             try {
                 val firestore = FirebaseFirestore.getInstance()
 
@@ -1283,8 +1288,8 @@ class SuperAdminRepository(
         val currentList = _businesses.value.toMutableList()
         val existingIndex = currentList.indexOfFirst {
             it.id == business.id ||
-            (it.ownerUid.isNotBlank() && it.ownerUid == business.ownerUid) ||
-            (it.ownerPhone == business.ownerPhone && business.ownerPhone.isNotBlank())
+            (it.ownerUid.isNotBlank() && it.ownerUid == business.ownerUid &&
+             it.id == business.ownerUid && (it.address.isBlank() || it.ownerPhone.isBlank()))
         }
         if (existingIndex >= 0) {
             currentList[existingIndex] = business

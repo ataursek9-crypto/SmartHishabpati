@@ -209,6 +209,73 @@ object GoogleSignInHelper {
             }
     }
 
+    fun requestGoogleIdToken(
+        context: Context,
+        scope: CoroutineScope,
+        onIdToken: (String) -> Unit,
+        onCancelled: (() -> Unit)? = null,
+        onError: (String) -> Unit
+    ) {
+        val activity = findActivity(context)
+        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+            onError("সিস্টেম ত্রুটি: অ্যাক্টিভিটি পাওয়া যায়নি বা বন্ধ রয়েছে।")
+            return
+        }
+
+        val clientId = getWebClientId(context)
+        if (clientId.isBlank()) {
+            onError("গুগল সাইন-ইন কনফিগারেশন পাওয়া যায়নি (default_web_client_id অনুপস্থিত)।")
+            return
+        }
+
+        val currentSha1 = getSigningSha1(context)
+        Log.i(TAG, "Requesting Google ID Token with serverClientId=$clientId, package=${context.packageName}, sha1=$currentSha1")
+
+        val credentialManager = CredentialManager.create(context)
+        val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId)
+            .build()
+
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(signInWithGoogleOption)
+            .build()
+
+        scope.launch {
+            try {
+                val result = credentialManager.getCredential(activity, request)
+                val credential = result.credential
+                val googleIdToken: String? = when {
+                    credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL -> {
+                        try {
+                            GoogleIdTokenCredential.createFrom(credential.data).idToken
+                        } catch (e: Exception) {
+                            credential.data.getString("com.google.android.libraries.identity.googleid.BUNDLE_KEY_ID_TOKEN")
+                                ?: credential.data.getString("id_token")
+                        }
+                    }
+                    credential is CustomCredential -> {
+                        try {
+                            GoogleIdTokenCredential.createFrom(credential.data).idToken
+                        } catch (e: Exception) {
+                            credential.data.getString("com.google.android.libraries.identity.googleid.BUNDLE_KEY_ID_TOKEN")
+                                ?: credential.data.getString("id_token")
+                        }
+                    }
+                    else -> null
+                }
+
+                if (!googleIdToken.isNullOrBlank()) {
+                    onIdToken(googleIdToken)
+                } else {
+                    onError("গুগল আইডি টোকেন পাওয়া যায়নি [ক্রেডেনশিয়াল টাইপ: ${credential.type}]")
+                }
+            } catch (e: GetCredentialCancellationException) {
+                if (onCancelled != null) onCancelled()
+            } catch (t: Throwable) {
+                onError(getBengaliErrorMessage(t))
+            }
+        }
+    }
+
     fun launchGoogleSignIn(
         context: Context,
         scope: CoroutineScope,

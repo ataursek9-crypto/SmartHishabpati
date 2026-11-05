@@ -82,6 +82,7 @@ fun LoginScreen(
     val rememberedEmail by viewModel.rememberedEmail.collectAsStateWithLifecycle()
     val savedRememberMe by viewModel.rememberMeState.collectAsStateWithLifecycle()
     val pendingShopSelection by viewModel.pendingShopSelection.collectAsStateWithLifecycle()
+    val loginProviderHint by viewModel.loginProviderHint.collectAsStateWithLifecycle()
     val currentLanguage by AppLanguageManager.currentLanguage.collectAsStateWithLifecycle()
 
     // Form State
@@ -476,46 +477,98 @@ fun LoginScreen(
             // Error Banner (if any)
             if (errorMessage.isNotBlank() || googleStatusMessage.isNotBlank()) {
                 val bannerText = if (errorMessage.isNotBlank()) errorMessage else googleStatusMessage
-                val isNoShopMsg = bannerText.contains("USER_HAS_NO_SHOPS") || bannerText.contains("নতুন দোকান")
-                val isCredentialIssue = bannerText.contains("Google", ignoreCase = true) ||
+                val isGoogleOnlyHint = loginProviderHint == AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY
+                val isNoShopMsg = !isGoogleOnlyHint && (bannerText.contains("USER_HAS_NO_SHOPS") || bannerText.contains("নতুন দোকান"))
+                val isCredentialIssue = isGoogleOnlyHint ||
+                        bannerText.contains("Google", ignoreCase = true) ||
                         bannerText.contains("পাসওয়ার্ড", ignoreCase = true) ||
+                        bannerText.contains("password", ignoreCase = true) ||
                         bannerText.contains("INVALID_CREDENTIAL", ignoreCase = true) ||
                         bannerText.contains("WRONG_PASSWORD", ignoreCase = true) ||
                         bannerText.contains("ACCOUNT_EXISTS", ignoreCase = true)
                 val cleanBannerText = bannerText.replace("USER_HAS_NO_SHOPS:", "").trim()
 
+                val cardBg = when {
+                    isGoogleOnlyHint -> Color(0xFFF3E8FF)
+                    isNoShopMsg -> Color(0xFFFEF3C7)
+                    else -> Color(0xFFFEE2E2)
+                }
+                val cardBorder = when {
+                    isGoogleOnlyHint -> Color(0xFFC4B5FD)
+                    isNoShopMsg -> Color(0xFFFCD34D)
+                    else -> Color(0xFFFCA5A5)
+                }
+                val iconTint = when {
+                    isGoogleOnlyHint -> HishabpatiPurple
+                    isNoShopMsg -> Color(0xFFD97706)
+                    else -> AccentRed
+                }
+                val textColor = when {
+                    isGoogleOnlyHint -> Color(0xFF3B0764)
+                    isNoShopMsg -> Color(0xFF92400E)
+                    else -> Color(0xFF991B1B)
+                }
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (isNoShopMsg) Color(0xFFFEF3C7) else Color(0xFFFEE2E2)),
+                        .padding(bottom = 12.dp)
+                        .testTag("login_error_banner"),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, if (isNoShopMsg) Color(0xFFFCD34D) else Color(0xFFFCA5A5))
+                    border = BorderStroke(1.dp, cardBorder)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                if (isNoShopMsg) Icons.Default.Storefront else Icons.Default.ErrorOutline,
+                                imageVector = when {
+                                    isGoogleOnlyHint -> Icons.Default.AccountCircle
+                                    isNoShopMsg -> Icons.Default.Storefront
+                                    else -> Icons.Default.ErrorOutline
+                                },
                                 contentDescription = null,
-                                tint = if (isNoShopMsg) Color(0xFFD97706) else AccentRed,
+                                tint = iconTint,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = cleanBannerText,
-                                color = if (isNoShopMsg) Color(0xFF92400E) else Color(0xFF991B1B),
+                                color = textColor,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp,
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        if (isNoShopMsg) {
+                        if (isGoogleOnlyHint) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { triggerGoogleSignIn() },
+                                colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .testTag("login_error_google_signin_button")
+                            ) {
+                                Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = AppStrings.continueWithGoogle,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        } else if (isNoShopMsg) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Button(
                                 onClick = onNavigateToRegistration,
                                 colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth().height(40.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .testTag("login_register_shop_from_error_button")
                             ) {
                                 Icon(Icons.Default.AddBusiness, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -531,7 +584,10 @@ fun LoginScreen(
                                     onClick = { triggerGoogleSignIn() },
                                     colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f).height(38.dp)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .testTag("login_error_google_signin_button")
                                 ) {
                                     Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -548,12 +604,18 @@ fun LoginScreen(
                                         forgotPasswordStatusMsg = ""
                                         isPasswordResetSuccess = false
                                         isGoogleOnlyAccountPrompt = false
+                                        errorMessage = ""
+                                        googleStatusMessage = ""
+                                        viewModel.clearLoginProviderHint()
                                         showForgotPasswordDialog = true
                                     },
                                     colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
                                     border = BorderStroke(1.dp, HishabpatiPurple),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f).height(38.dp)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .testTag("login_error_forgot_password_button")
                                 ) {
                                     Icon(Icons.Default.LockReset, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -860,17 +922,22 @@ fun LoginScreen(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = HishabpatiPurple,
-                            modifier = Modifier.clickable {
-                                if (loginMethodTab == 0) {
-                                    forgotPasswordEmailInput = email.ifBlank { "" }
-                                    forgotPasswordStatusMsg = ""
-                                    isPasswordResetSuccess = false
-                                    isGoogleOnlyAccountPrompt = false
-                                    showForgotPasswordDialog = true
-                                } else {
-                                    showForgotPinDialog = true
+                            modifier = Modifier
+                                .clickable {
+                                    if (loginMethodTab == 0) {
+                                        forgotPasswordEmailInput = email.ifBlank { "" }
+                                        forgotPasswordStatusMsg = ""
+                                        isPasswordResetSuccess = false
+                                        isGoogleOnlyAccountPrompt = false
+                                        errorMessage = ""
+                                        googleStatusMessage = ""
+                                        viewModel.clearLoginProviderHint()
+                                        showForgotPasswordDialog = true
+                                    } else {
+                                        showForgotPinDialog = true
+                                    }
                                 }
-                            }
+                                .testTag("forgot_password_link")
                         )
                     }
 
@@ -1534,7 +1601,10 @@ fun LoginScreen(
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
                         text = if (isEn) {
                             "Enter the Gmail address registered with your account. We will request a password reset link from Firebase."
@@ -1544,6 +1614,17 @@ fun LoginScreen(
                         fontSize = 13.sp,
                         color = Color(0xFF334155),
                         lineHeight = 18.sp
+                    )
+
+                    Text(
+                        text = if (isEn) {
+                            "Enter your registered Gmail address. If this account has a password, Firebase will accept a password reset request. If created with Google Sign-In, tap 'Continue with Google' below."
+                        } else {
+                            "আপনার নিবন্ধিত Gmail ঠিকানা দিন। Email/Password অ্যাকাউন্ট হলে Firebase পাসওয়ার্ড রিসেট লিংক পাঠানোর অনুরোধ গ্রহণ করবে; আর Google দিয়ে তৈরি হলে নিচে থেকে সরাসরি Google দিয়ে প্রবেশ করতে পারবেন।"
+                        },
+                        fontSize = 12.sp,
+                        color = Color(0xFF475569),
+                        lineHeight = 17.sp
                     )
 
                     OutlinedTextField(
@@ -1571,21 +1652,27 @@ fun LoginScreen(
                                 else if (isGoogleOnlyAccountPrompt) Color(0xFFF3E8FF)
                                 else Color(0xFFFEE2E2)
                             ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isPasswordResetSuccess) Color(0xFF86EFAC)
+                                else if (isGoogleOnlyAccountPrompt) Color(0xFFC4B5FD)
+                                else Color(0xFFFCA5A5)
+                            ),
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("forgot_password_status_card")
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text(
                                     text = forgotPasswordStatusMsg,
                                     color = if (isPasswordResetSuccess) Color(0xFF15803D)
-                                    else if (isGoogleOnlyAccountPrompt) HishabpatiPurple
+                                    else if (isGoogleOnlyAccountPrompt) Color(0xFF3B0764)
                                     else Color(0xFFB91C1C),
                                     fontSize = 12.sp,
                                     lineHeight = 17.sp,
                                     fontWeight = if (isPasswordResetSuccess || isGoogleOnlyAccountPrompt) FontWeight.Medium else FontWeight.Normal
                                 )
                                 if (isPasswordResetSuccess) {
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Text(
                                         text = AppStrings.emailDeliveryNotice,
                                         fontSize = 11.sp,
@@ -1597,25 +1684,46 @@ fun LoginScreen(
                         }
                     }
 
-                    // 1-Click Google Sign-In Option (Ideal for Google accounts or instant access)
-                    OutlinedButton(
-                        onClick = {
-                            showForgotPasswordDialog = false
-                            triggerGoogleSignIn()
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF5F3FF)),
-                        border = BorderStroke(1.dp, HishabpatiPurple),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("google_login_from_reset_button")
-                    ) {
-                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isEn) "Sign In with Google (No Password Needed)" else "Google দিয়ে সরাসরি প্রবেশ করুন",
-                            color = HishabpatiPurple,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                    // 1-Click Google Sign-In Option (Primary CTA when Google-only account is detected)
+                    if (isGoogleOnlyAccountPrompt) {
+                        Button(
+                            onClick = {
+                                showForgotPasswordDialog = false
+                                triggerGoogleSignIn()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = HishabpatiPurple),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("google_login_from_reset_button")
+                        ) {
+                            Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = AppStrings.continueWithGoogle,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                showForgotPasswordDialog = false
+                                triggerGoogleSignIn()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF5F3FF)),
+                            border = BorderStroke(1.dp, HishabpatiPurple),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("google_login_from_reset_button")
+                        ) {
+                            Icon(Icons.Default.AccountCircle, contentDescription = null, tint = HishabpatiPurple, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isEn) "Sign In with Google (No Password Needed)" else "Google দিয়ে সরাসরি প্রবেশ করুন",
+                                color = HishabpatiPurple,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
                     }
                 }
             },

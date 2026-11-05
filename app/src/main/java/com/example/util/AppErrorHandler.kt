@@ -84,7 +84,9 @@ object AppErrorHandler {
 
         // 2. Network & Internet Unavailable
         if (error is UnknownHostException || error is FirebaseNetworkException ||
-            msg.contains("network error", ignoreCase = true) || msg.contains("failed to connect", ignoreCase = true)
+            msg.contains("network error", ignoreCase = true) ||
+            msg.contains("network-request-failed", ignoreCase = true) ||
+            msg.contains("failed to connect", ignoreCase = true)
         ) {
             return AppError(
                 problemBn = "ইন্টারনেট সংযোগ পাওয়া যাচ্ছে না।",
@@ -113,7 +115,7 @@ object AppErrorHandler {
         ) {
             return AppError(
                 problemBn = "এই ইমেইলটি অন্য একটি সাইন-ইন পদ্ধতির (যেমন Google) সাথে যুক্ত।",
-                whatToDoBn = "অনুগ্রহ করে নিচে 'Google দিয়ে প্রবেশ' বোতাম ব্যবহার করে লগইন করুন।",
+                whatToDoBn = "অনুগ্রহ করে নিচে 'Google দিয়ে প্রবেশ করুন' বোতাম ব্যবহার করে লগইন করুন।",
                 problemEn = "An account already exists with the same email address but different sign-in credentials.",
                 whatToDoEn = "Please sign in using the 'Continue with Google' button below.",
                 rawErrorCode = "ACCOUNT_EXISTS_DIFFERENT_CREDENTIAL"
@@ -124,6 +126,7 @@ object AppErrorHandler {
         if (errCode == "ERROR_INVALID_EMAIL" ||
             msg.contains("badly formatted", ignoreCase = true) ||
             msg.contains("invalid email", ignoreCase = true) ||
+            msg.contains("invalid-email", ignoreCase = true) ||
             msg.contains("invalid_email", ignoreCase = true)
         ) {
             return AppError(
@@ -152,12 +155,13 @@ object AppErrorHandler {
 
         // 4d. Firebase Authentication: Specific Wrong Password
         if (errCode == "ERROR_WRONG_PASSWORD" ||
+            msg.contains("wrong-password", ignoreCase = true) ||
             msg.contains("password is invalid", ignoreCase = true) ||
             msg.contains("wrong password", ignoreCase = true)
         ) {
             return AppError(
                 problemBn = "পাসওয়ার্ড সঠিক নয়।",
-                whatToDoBn = "পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন, অথবা পাসওয়ার্ড ভুলে গেলে নিচে 'Forgot Password' ব্যবহার করুন।",
+                whatToDoBn = "পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন, অথবা পাসওয়ার্ড ভুলে গেলে নিচে 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন।",
                 problemEn = "The password is incorrect.",
                 whatToDoEn = "Please try again or use Forgot Password to reset.",
                 rawErrorCode = "WRONG_PASSWORD"
@@ -172,7 +176,7 @@ object AppErrorHandler {
         ) {
             return AppError(
                 problemBn = "প্রদত্ত পাসওয়ার্ড সঠিক নয়, অথবা অ্যাকাউন্টটি Google দিয়ে তৈরি।",
-                whatToDoBn = "পাসওয়ার্ড যাচাই করে পুনরায় চেষ্টা করুন, অথবা নিচে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন। পাসওয়ার্ড মনে না থাকলে 'Forgot Password' করুন।",
+                whatToDoBn = "পাসওয়ার্ড যাচাই করে পুনরায় চেষ্টা করুন, অথবা নিচে 'Google দিয়ে প্রবেশ করুন' বোতামে চাপ দিন। পাসওয়ার্ড মনে না থাকলে 'পাসওয়ার্ড ভুলে গেছেন?' করুন।",
                 problemEn = "Invalid password entered, or this account was created using Google Sign-In.",
                 whatToDoEn = "Verify your password, sign in directly with Google, or use Forgot Password to reset.",
                 rawErrorCode = "INVALID_CREDENTIAL"
@@ -195,7 +199,11 @@ object AppErrorHandler {
         }
 
         // 7. Rate Limit / Too Many Requests
-        if (error is FirebaseTooManyRequestsException || errCode == "ERROR_TOO_MANY_REQUESTS" || msg.contains("blocked all requests", ignoreCase = true)) {
+        if (error is FirebaseTooManyRequestsException ||
+            errCode == "ERROR_TOO_MANY_REQUESTS" ||
+            msg.contains("too-many-requests", ignoreCase = true) ||
+            msg.contains("blocked all requests", ignoreCase = true)
+        ) {
             return AppError(
                 problemBn = "অতিরিক্ত অনুরোধের কারণে সাময়িকভাবে সেবা স্থগিত রাখা হয়েছে।",
                 whatToDoBn = "অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন অথবা Google সাইন-ইন ব্যবহার করুন।",
@@ -214,7 +222,7 @@ object AppErrorHandler {
         ) {
             return AppError(
                 problemBn = "Firebase Phone Authentication বন্ধ রয়েছে অথবা বাংলাদেশে (+880) SMS পাঠানোর অনুমতি (SMS Region Policy) নেই।",
-                whatToDoBn = "১. SMS ঝামেলা ছাড়া 'Google দিয়ে প্রবেশ' ব্যবহার করুন (প্রস্তাবিত)।\n২. অথবা Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) Allow করুন এবং Blaze বিলিং সক্রিয় করুন।",
+                whatToDoBn = "১. SMS ঝামেলা ছাড়া 'Google দিয়ে প্রবেশ করুন' ব্যবহার করুন (প্রস্তাবিত)।\n২. অথবা Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) Allow করুন এবং Blaze বিলিং সক্রিয় করুন।",
                 problemEn = "Firebase Phone Auth is disabled or SMS Region Policy blocks Bangladesh (+880).",
                 whatToDoEn = "1. Use 'Sign in with Google' for instant access without SMS dependencies.\n2. In Firebase Console > Authentication > Settings > SMS Region Policy, enable Bangladesh (+880) and check billing.",
                 rawErrorCode = "OPERATION_NOT_ALLOWED"
@@ -270,6 +278,62 @@ object AppErrorHandler {
         )
     }
 
+    enum class EmailAuthProviderType {
+        GOOGLE_ONLY,
+        PASSWORD_ONLY,
+        GOOGLE_AND_PASSWORD,
+        NOT_FOUND,
+        UNKNOWN
+    }
+
+    /**
+     * Maps Login errors with audited provider context so Google-only accounts are never
+     * misled with "Wrong Password" errors.
+     */
+    fun mapLoginError(error: Throwable?, auditedProviderType: EmailAuthProviderType): AppError {
+        val baseError = map(error)
+        if (baseError.rawErrorCode == "NETWORK_UNAVAILABLE" ||
+            baseError.rawErrorCode == "TIMEOUT" ||
+            baseError.rawErrorCode == "TOO_MANY_REQUESTS" ||
+            baseError.rawErrorCode == "INVALID_EMAIL" ||
+            baseError.rawErrorCode == "ACCOUNT_EXISTS_DIFFERENT_CREDENTIAL"
+        ) {
+            return baseError
+        }
+
+        return when (auditedProviderType) {
+            EmailAuthProviderType.GOOGLE_ONLY -> AppError(
+                problemBn = "এই Gmail অ্যাকাউন্টটি Google Sign-In দিয়ে তৈরি—এতে কোনো পাসওয়ার্ড যুক্ত নেই।",
+                whatToDoBn = "পাসওয়ার্ড দিয়ে লগইন করার চেষ্টা না করে নিচের 'Google দিয়ে প্রবেশ করুন' বোতামে ট্যাপ করুন।",
+                problemEn = "This Gmail account was created with Google Sign-In and has no password.",
+                whatToDoEn = "Please tap 'Continue with Google' below to sign in directly.",
+                rawErrorCode = "GOOGLE_ONLY_ACCOUNT"
+            )
+            EmailAuthProviderType.NOT_FOUND -> AppError(
+                problemBn = "এই ইমেইলে কোনো অ্যাকাউন্ট খুঁজে পাওয়া যায়নি।",
+                whatToDoBn = "আপনার ইমেইল ঠিকানা সঠিক কিনা যাচাই করুন অথবা 'নতুন অ্যাকাউন্ট তৈরি করুন' থেকে দোকান নিবন্ধন করুন।",
+                problemEn = "No account found for this email address.",
+                whatToDoEn = "Verify your email address or create a new shop account.",
+                rawErrorCode = "USER_NOT_FOUND"
+            )
+            EmailAuthProviderType.PASSWORD_ONLY -> AppError(
+                problemBn = "পাসওয়ার্ড সঠিক নয়।",
+                whatToDoBn = "সঠিক পাসওয়ার্ড বা পিন দিয়ে আবার চেষ্টা করুন, অথবা নিচে 'পাসওয়ার্ড ভুলে গেছেন? (Forgot Password)' ব্যবহার করুন।",
+                problemEn = "The password is incorrect.",
+                whatToDoEn = "Please check your password/PIN and try again, or use Forgot Password to reset.",
+                rawErrorCode = if (baseError.rawErrorCode == "INVALID_CREDENTIAL") "INVALID_CREDENTIAL" else "WRONG_PASSWORD"
+            )
+            EmailAuthProviderType.GOOGLE_AND_PASSWORD -> AppError(
+                problemBn = "পাসওয়ার্ড সঠিক নয়।",
+                whatToDoBn = "সঠিক পাসওয়ার্ড দিয়ে চেষ্টা করুন, 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন, অথবা সরাসরি 'Google দিয়ে প্রবেশ করুন' বোতামে চাপ দিন।",
+                problemEn = "The password is incorrect.",
+                whatToDoEn = "Try again with the correct password, use Forgot Password, or sign in directly with Google.",
+                rawErrorCode = if (baseError.rawErrorCode == "INVALID_CREDENTIAL") "INVALID_CREDENTIAL" else "WRONG_PASSWORD"
+            )
+            EmailAuthProviderType.UNKNOWN -> baseError
+        }
+    }
+
     /**
      * Dedicated error mapper for Password Reset requests.
      * Prevents misleading "Wrong Password" errors when requesting a password reset.
@@ -288,7 +352,9 @@ object AppErrorHandler {
         val errCode = if (error is FirebaseAuthException) error.errorCode else ""
 
         if (error is UnknownHostException || error is FirebaseNetworkException ||
-            msg.contains("network error", ignoreCase = true) || msg.contains("failed to connect", ignoreCase = true)
+            msg.contains("network error", ignoreCase = true) ||
+            msg.contains("network-request-failed", ignoreCase = true) ||
+            msg.contains("failed to connect", ignoreCase = true)
         ) {
             return AppError(
                 problemBn = "ইন্টারনেট সংযোগ পাওয়া যাচ্ছে না।",
@@ -299,9 +365,20 @@ object AppErrorHandler {
             )
         }
 
+        if (error is SocketTimeoutException || msg.contains("timeout", ignoreCase = true)) {
+            return AppError(
+                problemBn = "সার্ভারের সঙ্গে সংযোগের সময় শেষ হয়ে গেছে।",
+                whatToDoBn = "ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন, অথবা নিচে 'Google দিয়ে সরাসরি প্রবেশ করুন' ব্যবহার করুন।",
+                problemEn = "Connection to server timed out.",
+                whatToDoEn = "Check your internet connection and retry, or tap Sign In with Google below.",
+                rawErrorCode = "TIMEOUT"
+            )
+        }
+
         if (errCode == "ERROR_INVALID_EMAIL" ||
             msg.contains("badly formatted", ignoreCase = true) ||
-            msg.contains("invalid email", ignoreCase = true)
+            msg.contains("invalid email", ignoreCase = true) ||
+            msg.contains("invalid-email", ignoreCase = true)
         ) {
             return AppError(
                 problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
@@ -312,7 +389,10 @@ object AppErrorHandler {
             )
         }
 
-        if (error is FirebaseAuthInvalidUserException || errCode == "ERROR_USER_NOT_FOUND") {
+        if (error is FirebaseAuthInvalidUserException ||
+            errCode == "ERROR_USER_NOT_FOUND" ||
+            msg.contains("user-not-found", ignoreCase = true)
+        ) {
             return AppError(
                 problemBn = "এই ইমেইলে কোনো নিবন্ধিত অ্যাকাউন্ট পাওয়া যায়নি।",
                 whatToDoBn = "ইমেইলটি সঠিক কিনা যাচাই করুন অথবা নতুন দোকান নিবন্ধন করুন।",
@@ -322,7 +402,10 @@ object AppErrorHandler {
             )
         }
 
-        if (error is FirebaseTooManyRequestsException || errCode == "ERROR_TOO_MANY_REQUESTS") {
+        if (error is FirebaseTooManyRequestsException ||
+            errCode == "ERROR_TOO_MANY_REQUESTS" ||
+            msg.contains("too-many-requests", ignoreCase = true)
+        ) {
             return AppError(
                 problemBn = "অতিরিক্ত অনুরোধের কারণে সাময়িকভাবে সেবা স্থগিত রাখা হয়েছে।",
                 whatToDoBn = "অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন অথবা Google দিয়ে সরাসরি প্রবেশ করুন।",

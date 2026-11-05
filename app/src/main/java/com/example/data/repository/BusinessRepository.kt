@@ -881,7 +881,8 @@ class BusinessRepository(
         district: String,
         businessType: String,
         pin: String,
-        shopId: String = ""
+        shopId: String = "",
+        ownerId: String = ""
     ): Result<Pair<User, CompanySettings>> {
         val cleanPhone = CloudBusinessAuth.normalizePhone(phone)
         val cleanShopName = shopName.trim()
@@ -902,16 +903,19 @@ class BusinessRepository(
 
         val resolvedShopId = shopId.ifBlank { "biz_${System.currentTimeMillis() % 10000000}_${(1000..9999).random()}" }
 
-        // Check duplicate phone in local DB
+        // Check duplicate phone in local DB (allow if retry on same shop or verified same ownerId creating additional shop)
         val existing = db.userDao().getUserByPhone(cleanPhone)
         if (existing != null) {
-            if (existing.role != UserRole.ADMIN || (existing.shopId.isNotBlank() && existing.shopId != resolvedShopId)) {
+            val isSameOwner = ownerId.isNotBlank() && existing.id == ownerId
+            if (existing.role != UserRole.ADMIN ||
+                (!isSameOwner && existing.shopId.isNotBlank() && existing.shopId != resolvedShopId)
+            ) {
                 return Result.failure(IllegalStateException("এই মোবাইল নম্বর (${cleanPhone}) দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট নিবন্ধিত রয়েছে!"))
             }
         }
 
         val hashedPin = hashPin(pin)
-        val adminId = existing?.id ?: "admin_${System.currentTimeMillis() % 10000000}_${(100..999).random()}"
+        val adminId = ownerId.ifBlank { existing?.id ?: "admin_${System.currentTimeMillis() % 10000000}_${(100..999).random()}" }
         val newAdmin = User(
             id = adminId,
             name = cleanOwnerName,

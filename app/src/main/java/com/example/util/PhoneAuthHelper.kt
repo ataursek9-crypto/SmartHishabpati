@@ -243,7 +243,7 @@ object PhoneAuthHelper {
             } else {
                 "Firebase-এ Phone প্রোভাইডার বন্ধ রয়েছে, বাংলাদেশে (+880) SMS পাঠানোর অনুমতি (SMS Region Policy) নেই অথবা Blaze বিলিং সক্রিয় নেই।\n\n" +
                         "করণীয়:\n" +
-                        "১. SMS ঝামেলা ছাড়া তাৎক্ষণিক প্রবেশ করতে 'Google দিয়ে প্রবেশ' ব্যবহার করুন (প্রস্তাবিত)।\n" +
+                        "১. SMS ঝামেলা ছাড়া তাৎক্ষণিক প্রবেশ করতে 'Google অ্যাকাউন্ট দিয়ে প্রবেশ' ব্যবহার করুন (প্রস্তাবিত)।\n" +
                         "২. Firebase Console > Authentication > Sign-in method-এ 'Phone' প্রোভাইডার Enable করুন।\n" +
                         "৩. Firebase Console > Authentication > Settings > 'SMS Region Policy'-তে Bangladesh (+880) Allow করুন এবং Blaze বিলিং সক্রিয় রাখুন।"
             }

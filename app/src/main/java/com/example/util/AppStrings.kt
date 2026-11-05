@@ -153,23 +153,29 @@ object AppStrings {
 
     // Password Reset & Phone OTP Specific
     val passwordResetRequestAccepted: String get() = if (isEn()) {
-        "Your password reset request has been accepted by Firebase. Please check your Gmail Inbox, Spam, and Promotions folders.\n(Note: If this account was created with Google, no password is needed—you can sign in directly with Google)."
+        "Your password reset request has been accepted. Please check your inbox and Spam/Junk folder."
     } else {
-        "পাসওয়ার্ড পরিবর্তনের লিংক পাঠানোর অনুরোধ Firebase-এ গৃহীত হয়েছে। আপনার Gmail-এর ইনবক্স (Inbox), Spam ও Promotions ফোল্ডার পরীক্ষা করুন।\n(নোট: যদি অ্যাকাউন্টটি Google দিয়ে তৈরি হয়ে থাকে, তবে কোনো পাসওয়ার্ড পরিবর্তনের প্রয়োজন নেই—সরাসরি Google দিয়ে প্রবেশ করতে পারবেন)।"
+        "পাসওয়ার্ড পরিবর্তনের লিংক আপনার ইমেইলে পাঠানোর অনুরোধ গ্রহণ করা হয়েছে। ইনবক্স ও Spam/Junk ফোল্ডার পরীক্ষা করুন।"
+    }
+
+    val googleOnlyForgotPasswordNotice: String get() = if (isEn()) {
+        "This Gmail account uses Google Sign-In and has no password. No password reset email is needed—please tap 'Continue with Google' below to sign in."
+    } else {
+        "এই Gmail অ্যাকাউন্টটি Google Sign-In দিয়ে তৈরি এবং এতে কোনো পাসওয়ার্ড যুক্ত নেই। তাই পাসওয়ার্ড রিসেট ইমেইল পাঠানোর প্রয়োজন নেই—নিচে 'Google দিয়ে প্রবেশ করুন' বোতামে চাপ দিয়ে সরাসরি লগইন করুন।"
     }
 
     val googleOnlyAccountNotice: String get() = if (isEn()) {
         "This account was created with Google Sign-In and has no password. Please use the 'Continue with Google' button below."
     } else {
-        "এই অ্যাকাউন্টটি 'Google Sign-In' দিয়ে তৈরি। এতে কোনো পাসওয়ার্ড নেই। অনুগ্রহ করে 'Google দিয়ে প্রবেশ' বোতামে চাপ দিন।"
+        "এই অ্যাকাউন্টটি 'Google Sign-In' দিয়ে তৈরি। এতে কোনো পাসওয়ার্ড নেই। অনুগ্রহ করে 'Google দিয়ে প্রবেশ করুন' বোতামে চাপ দিন।"
     }
 
     val continueWithGoogle: String get() = if (isEn()) "Continue with Google" else "Google দিয়ে প্রবেশ করুন"
 
     val emailDeliveryNotice: String get() = if (isEn()) {
-        "Notice: Firebase has accepted the request. Check your Gmail Inbox, Spam, and Promotions folders. (Emails are sent from noreply@smart-business-manager-71879.firebaseapp.com)."
+        "Notice: Firebase accepted the password reset request. Please check your Gmail Inbox, Spam, and Promotions folders (sender: noreply@smart-business-manager-71879.firebaseapp.com)."
     } else {
-        "দৃষ্টি আকর্ষণ: Firebase অনুরোধটি গ্রহণ করেছে। আপনার Gmail-এর Inbox, Spam ও Promotions ফোল্ডার চেক করুন। (ইমেইলটি noreply@smart-business-manager-71879.firebaseapp.com থেকে পাঠানো হয়)।"
+        "দৃষ্টি আকর্ষণ: Firebase অনুরোধটি গ্রহণ করেছে। অনুগ্রহ করে আপনার Gmail-এর Inbox, Spam এবং Promotions—সব ফোল্ডার পরীক্ষা করুন (প্রেরক: noreply@smart-business-manager-71879.firebaseapp.com)।"
     }
 
     val phoneOtpNotice: String get() = if (isEn()) {
@@ -177,4 +183,23 @@ object AppStrings {
     } else {
         "Firebase সার্ভারে এসএমএস ওটিপি পাঠানোর অনুরোধ গৃহীত হয়েছে। আপনার মোবাইল নেটওয়ার্কে এসএমএস আসা অপেক্ষা করুন।"
     }
+
+    val existingAccountRecoveryTitle: String get() = if (isEn()) {
+        "Existing Account Detected"
+    } else {
+        "পূর্বের অ্যাকাউন্ট শনাক্ত হয়েছে"
+    }
+
+    val openExistingShopButton: String get() = if (isEn()) {
+        "Open Existing Shop"
+    } else {
+        "আগের দোকানে প্রবেশ করুন"
+    }
+
+    val addNewShopSameGmailButton: String get() = if (isEn()) {
+        "Add New Shop to This Gmail"
+    } else {
+        "একই Gmail-এ নতুন দোকান যোগ করুন"
+    }
 }
+

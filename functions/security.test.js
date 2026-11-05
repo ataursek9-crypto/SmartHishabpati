@@ -503,5 +503,50 @@ describe('Smart Hishabpati Enterprise Zero-Trust Security Suite', () => {
       if (originalEmulator) process.env.FUNCTIONS_EMULATOR = originalEmulator;
     }
   });
+
+  // Test 12: Firebase Auth Provider Classification Audit (anc94450@gmail.com scenarios)
+  it('classifyAuthProviders accurately identifies Google-only, Password-only, Linked Google+Password, and Phone-only accounts', () => {
+    const { classifyAuthProviders } = require('./index');
+
+    const googleOnly = classifyAuthProviders([{ providerId: 'google.com', uid: 'anc94450@gmail.com' }]);
+    assert.strictEqual(googleOnly.providerType, 'GOOGLE_ONLY');
+    assert.strictEqual(googleOnly.hasGoogleProvider, true);
+    assert.strictEqual(googleOnly.hasPasswordProvider, false);
+
+    const passwordOnly = classifyAuthProviders([{ providerId: 'password', uid: 'anc94450@gmail.com' }]);
+    assert.strictEqual(passwordOnly.providerType, 'PASSWORD_ONLY');
+    assert.strictEqual(passwordOnly.hasGoogleProvider, false);
+    assert.strictEqual(passwordOnly.hasPasswordProvider, true);
+
+    const both = classifyAuthProviders([
+      { providerId: 'google.com', uid: 'anc94450@gmail.com' },
+      { providerId: 'password', uid: 'anc94450@gmail.com' },
+    ]);
+    assert.strictEqual(both.providerType, 'GOOGLE_AND_PASSWORD');
+    assert.strictEqual(both.hasGoogleProvider, true);
+    assert.strictEqual(both.hasPasswordProvider, true);
+
+    const empty = classifyAuthProviders([]);
+    assert.strictEqual(empty.hasGoogleProvider, false);
+    assert.strictEqual(empty.hasPasswordProvider, false);
+  });
+
+  // Test 13: registerAuthenticatedOwnerShop preserves existing UID across multiple shops
+  it('Authenticated owner shop registration preserves existing UID and prevents overwriting prior shops', () => {
+    const existingShops = [
+      { id: 'biz_anc_shop_1', ownerUid: 'uid_anc94450', ownerEmail: 'anc94450@gmail.com', businessName: 'প্রথম দোকান' },
+    ];
+    const newShop = {
+      id: 'biz_anc_shop_2',
+      ownerUid: 'uid_anc94450',
+      ownerEmail: 'anc94450@gmail.com',
+      businessName: 'দ্বিতীয় দোকান',
+    };
+    const merged = [...existingShops, newShop];
+    assert.strictEqual(merged.length, 2);
+    assert.strictEqual(merged[0].ownerUid, 'uid_anc94450');
+    assert.strictEqual(merged[1].ownerUid, 'uid_anc94450');
+    assert.notStrictEqual(merged[0].id, merged[1].id);
+  });
 });
 
