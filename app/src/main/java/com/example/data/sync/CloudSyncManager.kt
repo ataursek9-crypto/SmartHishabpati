@@ -483,12 +483,7 @@ class CloudSyncManager(
         val cloudConfigured = isCloudBackendConfigured()
         if (!cloudConfigured) {
             val pendingCount = countPendingLocalRecords()
-            val hasFirebaseApp = try { FirebaseApp.getApps(context).isNotEmpty() } catch (e: Exception) { false }
-            val statusText = if (!hasFirebaseApp) {
-                "লোকাল ডেটা সংরক্ষিত — ক্লাউড সেটআপ বাকি"
-            } else {
-                "লোকাল ডেটা সংরক্ষিত — গুগল একাউন্টে সাইন-ইন প্রয়োজন"
-            }
+            val statusText = "লোকাল ডেটা সংরক্ষিত — ক্লাউড সেটআপ বাকি"
             val state = SyncState(
                 status = SyncStatus.LOCAL_SAVED,
                 statusText = statusText,

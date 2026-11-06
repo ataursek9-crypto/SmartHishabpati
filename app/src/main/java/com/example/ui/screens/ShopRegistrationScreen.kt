@@ -309,6 +309,7 @@ fun ShopRegistrationScreen(
         focusManager.clearFocus()
 
         val cleanEmail = viewModel.sanitizeEmail(email)
+        email = cleanEmail
         val cleanPhone = phone.trim()
 
         if (!viewModel.isValidEmailFormat(cleanEmail)) {

@@ -1207,6 +1207,11 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             }
             when (val auth = repository.authenticateUser(phone, pin)) {
                 is BusinessRepository.AuthResult.Success -> {
+                    if (auth.user.role == UserRole.ADMIN || auth.user.role == UserRole.SUPER_ADMIN) {
+                        _currentUser.value = null
+                        onResult(false, "অননুমোদিত প্রবেশ! এডমিন অ্যাকাউন্ট সাধারণ স্ক্রিন থেকে লগইন করা যাবে না। লোগোতে ৫ বার ট্যাপ করে গোপন এডমিন পোর্টাল থেকে প্রবেশ করুন।")
+                        return@launch
+                    }
                     _currentUser.value = auth.user
                     _isSuperAdminSession.value = false
                     _superAdminVerifiedEmail.value = null
@@ -1328,12 +1333,21 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             when (val auth = repository.authenticateAdmin(phone, pin)) {
                 is BusinessRepository.AuthResult.Success -> {
                     _currentUser.value = auth.user
-                    _isSuperAdminSession.value = false
-                    _superAdminVerifiedEmail.value = null
-                    _superAdminUid.value = null
-                    _currentGoogleEmail.value = null
-                    CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
-                    CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
+                    val isSuperPhone = repository.isAuthorizedSuperAdminPhone(phone)
+                    if (isSuperPhone) {
+                        _isSuperAdminSession.value = true
+                        _superAdminVerifiedEmail.value = "ataurgonee4@gmail.com"
+                        _superAdminUid.value = auth.user.id
+                        CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), true)
+                        CloudBusinessAuth.setStoredAuthEmail(getApplication(), "ataurgonee4@gmail.com")
+                    } else {
+                        _isSuperAdminSession.value = false
+                        _superAdminVerifiedEmail.value = null
+                        _superAdminUid.value = null
+                        _currentGoogleEmail.value = null
+                        CloudBusinessAuth.setStoredSuperAdminFlag(getApplication(), false)
+                        CloudBusinessAuth.setStoredAuthEmail(getApplication(), null)
+                    }
                     CloudBusinessAuth.setStoredRole(getApplication(), UserRole.ADMIN.name)
                     CloudBusinessAuth.setActiveUserId(getApplication(), auth.user.id)
                     val existingBizId = CloudBusinessAuth.getStoredBusinessId(getApplication())
@@ -2555,19 +2569,35 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
      */
     fun sanitizeEmail(input: String?): String {
         if (input.isNullOrBlank()) return ""
-        return input.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F\\s]"), "")
-            .trim()
+        var sanitized = input
+            .replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F\\u2000-\\u200A\\u2028\\u2029\\u205F\\u2060-\\u206F\\s]"), "")
+            .replace('＠', '@')
+            .replace('．', '.')
+            .trim('\'', '"', '<', '>', '(', ')', '[', ']', '`', ' ', '\t', '\n', '\r', ',', ';')
             .lowercase()
+        while (sanitized.endsWith(".")) {
+            sanitized = sanitized.dropLast(1)
+        }
+        return sanitized
     }
 
     /**
      * Validates standard email format without requiring android.util.Patterns runtime mock.
-     * Robust against zero-width characters and whitespace.
+     * Robust against zero-width characters, invisible spaces, and edge cases.
      */
-    fun isValidEmailFormat(email: String): Boolean {
+    fun isValidEmailFormat(email: String?): Boolean {
+        if (email.isNullOrBlank()) return false
         val clean = sanitizeEmail(email)
         if (clean.isBlank() || clean.length > 254) return false
-        val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+        val atSplit = clean.split("@")
+        if (atSplit.size != 2) return false
+        val localPart = atSplit[0]
+        val domainPart = atSplit[1]
+        if (localPart.isBlank() || domainPart.isBlank()) return false
+        if (localPart.startsWith(".") || localPart.endsWith(".") || localPart.contains("..")) return false
+        if (domainPart.startsWith(".") || domainPart.endsWith(".") || domainPart.contains("..")) return false
+        if (!domainPart.contains(".")) return false
+        val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$")
         return emailRegex.matches(clean)
     }
 

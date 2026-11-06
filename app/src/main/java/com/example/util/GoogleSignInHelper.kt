@@ -50,8 +50,8 @@ object GoogleSignInHelper {
 
     // Real SHA-1 and SHA-256 certificate fingerprints for this APK signed by debug.keystore
     // Verified using: keytool -list -v -keystore debug.keystore -alias androiddebugkey
-    const val APK_SIGNING_SHA1 = "0F:AF:74:5D:7B:E1:D5:91:9C:F4:61:D9:EF:53:49:45:AD:7F:FB:31"
-    const val APK_SIGNING_SHA256 = "D1:82:84:42:DC:54:5A:88:04:03:F0:E3:19:E2:FD:FB:A0:CE:9D:95:F6:32:92:E1:4A:F1:25:26:23:15:AB:17"
+    const val APK_SIGNING_SHA1 = "0D:0D:F7:D2:30:1C:DB:CB:52:D8:BC:29:4D:1D:DB:3C:65:4C:33:82"
+    const val APK_SIGNING_SHA256 = "FF:66:72:E2:EA:70:80:BB:87:83:61:C3:07:08:56:08:2F:58:DC:3A:AA:7B:FB:C3:22:AF:AD:1B:15:B8:39:EB"
     const val DEFAULT_WEB_CLIENT_ID = "484040397249-h2tfr5q8pgu65ncl9fgaslcbdsvj9kkj.apps.googleusercontent.com"
     const val APPLICATION_ID = "com.aistudio.smartbiz.mgr"
 
@@ -158,6 +158,47 @@ object GoogleSignInHelper {
             currentContext = currentContext.baseContext
         }
         return null
+    }
+
+    /**
+     * Checks if Firebase Auth has a pending auth result from an activity-based OAuth sign-in flow
+     * (such as browser custom tab redirects when CredentialManager or Play Services falls back to web OAuth).
+     */
+    fun checkPendingAuthResult(
+        activity: Activity?,
+        onAuthSuccess: (FirebaseUser) -> Unit,
+        onError: ((String) -> Unit)? = null
+    ) {
+        if (activity == null || activity.isFinishing || activity.isDestroyed) return
+        try {
+            FirebaseInitHelper.ensureFirebaseInitialized(activity)
+            val auth = FirebaseAuth.getInstance()
+            val pendingTask = auth.pendingAuthResult
+            if (pendingTask != null) {
+                Log.i(TAG, "Pending Firebase Auth result found. Processing result...")
+                pendingTask
+                    .addOnSuccessListener { authResult ->
+                        val user = authResult.user
+                        if (user != null) {
+                            Log.i(TAG, "Pending auth result success: uid=${user.uid}, email=${user.email}")
+                            onAuthSuccess(user)
+                        } else {
+                            onError?.invoke("ফায়ারবেস ব্যবহারকারী সেশন পাওয়া যায়নি।")
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.w(TAG, "Pending auth result failure: ${e.message}")
+                        val exMsg = e.localizedMessage ?: e.message ?: ""
+                        val isCancelled = exMsg.contains("cancel", ignoreCase = true) ||
+                                (e is com.google.firebase.auth.FirebaseAuthException && e.errorCode == "ERROR_WEB_CONTEXT_CANCELED")
+                        if (!isCancelled) {
+                            onError?.invoke("গুগল সাইন-ইন সম্পন্ন হয়নি: $exMsg")
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "checkPendingAuthResult note: ${e.message}")
+        }
     }
 
     fun launchFirebaseOAuthFallback(

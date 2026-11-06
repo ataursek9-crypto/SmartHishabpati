@@ -49,6 +49,48 @@ fun AdminLoginScreen(
     var isGoogleLoading by remember { mutableStateOf(false) }
     var showGoogleDiagDialog by remember { mutableStateOf(false) }
 
+    val currentFUser = remember {
+        try { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser } catch (_: Exception) { null }
+    }
+    val isAlreadySuperAdminEmail = currentFUser != null &&
+        com.example.data.repository.SuperAdminRepository.isSuperAdminEmail(currentFUser.email)
+
+    // Check pending OAuth redirect task when returning from Chrome Custom Tab / browser
+    LaunchedEffect(Unit) {
+        val activity = GoogleSignInHelper.findActivity(context)
+        GoogleSignInHelper.checkPendingAuthResult(
+            activity = activity,
+            onAuthSuccess = { fUser ->
+                isGoogleLoading = false
+                viewModel.handleGoogleSignInSuccess(fUser) { success, msg, role ->
+                    if (success) {
+                        if (role == UserRole.ADMIN || viewModel.isSuperAdminUser()) {
+                            onAdminLoginSuccess()
+                        } else {
+                            errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
+                        }
+                    } else {
+                        errorMessage = msg
+                    }
+                }
+            },
+            onError = { err ->
+                isGoogleLoading = false
+                errorMessage = err
+            }
+        )
+    }
+
+    // Safety timeout: Ensure isGoogleLoading never hangs indefinitely if user dismisses external browser
+    LaunchedEffect(isGoogleLoading) {
+        if (isGoogleLoading) {
+            kotlinx.coroutines.delay(25000L)
+            if (isGoogleLoading) {
+                isGoogleLoading = false
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -294,6 +336,72 @@ fun AdminLoginScreen(
                     }
 
                     Spacer(modifier = Modifier.height(18.dp))
+
+                    if (isAlreadySuperAdminEmail && currentFUser != null) {
+                        Surface(
+                            color = Color(0xFFE8F5E9),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA5D6A7)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("admin_detected_super_admin_card")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = Color(0xFF2E7D32),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "অনুমোদিত সুপার অ্যাডমিন সনাক্ত হয়েছে",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF1B5E20)
+                                    )
+                                }
+                                Text(
+                                    text = currentFUser.email ?: "",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                                Button(
+                                    onClick = {
+                                        isGoogleLoading = true
+                                        errorMessage = ""
+                                        viewModel.handleGoogleSignInSuccess(currentFUser) { success, msg, role ->
+                                            isGoogleLoading = false
+                                            if (success) {
+                                                if (role == UserRole.ADMIN || viewModel.isSuperAdminUser()) {
+                                                    onAdminLoginSuccess()
+                                                } else {
+                                                    errorMessage = "অননুমোদিত অ্যাকাউন্ট! শুধুমাত্র সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
+                                                }
+                                            } else {
+                                                errorMessage = msg
+                                            }
+                                        }
+                                    },
+                                    enabled = !isGoogleLoading,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .testTag("admin_quick_super_admin_entry_button")
+                                ) {
+                                    Text("সুপার অ্যাডমিন ড্যাশবোর্ডে প্রবেশ করুন", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                    }
 
                     // Google Sign-In Button
                     GoogleSignInButton(

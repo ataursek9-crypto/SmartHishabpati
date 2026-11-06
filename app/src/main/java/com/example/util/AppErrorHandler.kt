@@ -161,7 +161,7 @@ object AppErrorHandler {
         ) {
             return AppError(
                 problemBn = "পাসওয়ার্ড সঠিক নয়।",
-                whatToDoBn = "পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন, অথবা পাসওয়ার্ড ভুলে গেলে নিচে 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন।",
+                whatToDoBn = "পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন, অথবা পাসওয়ার্ড ভুলে গেলে নিচে 'পাসওয়ার্ড পরিবর্তন' বা 'পাসওয়ার্ড ভুলে গেছেন?' ব্যবহার করুন।",
                 problemEn = "The password is incorrect.",
                 whatToDoEn = "Please try again or use Forgot Password to reset.",
                 rawErrorCode = "WRONG_PASSWORD"

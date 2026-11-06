@@ -105,8 +105,30 @@ fun SmartBusinessApp(
 ) {
     val context = LocalContext.current
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val isSuperAdminSession by viewModel.isSuperAdminSession.collectAsStateWithLifecycle()
     val currentLanguage by AppLanguageManager.currentLanguage.collectAsStateWithLifecycle()
     var currentScreen by remember { mutableStateOf(AppScreen.LOGIN) }
+
+    // Check pending OAuth redirect task when activity starts or returns from browser
+    LaunchedEffect(Unit) {
+        val activity = com.example.util.GoogleSignInHelper.findActivity(context)
+        com.example.util.GoogleSignInHelper.checkPendingAuthResult(
+            activity = activity,
+            onAuthSuccess = { fUser ->
+                viewModel.handleGoogleSignInSuccess(fUser) { success, _, _ ->
+                    if (success) {
+                        currentScreen = if (viewModel.isSuperAdminUser()) {
+                            AppScreen.SUPER_ADMIN_DASHBOARD
+                        } else if (viewModel.currentUser.value?.role == UserRole.ADMIN) {
+                            AppScreen.ADMIN_DASHBOARD
+                        } else {
+                            AppScreen.SALESMAN_DASHBOARD
+                        }
+                    }
+                }
+            }
+        )
+    }
 
     // Screen State parameters
     var activeSale by remember { mutableStateOf<Sale?>(null) }
@@ -117,7 +139,7 @@ fun SmartBusinessApp(
     var dataProtectionPreviousScreen by remember { mutableStateOf(AppScreen.SETTINGS) }
 
     // Synchronize authentication with screen and enforce role-based navigation security
-    LaunchedEffect(currentUser, currentScreen) {
+    LaunchedEffect(currentUser, currentScreen, isSuperAdminSession) {
         if (currentUser == null) {
             if (currentScreen != AppScreen.LOGIN && currentScreen != AppScreen.ADMIN_LOGIN && currentScreen != AppScreen.SHOP_REGISTRATION) {
                 currentScreen = AppScreen.LOGIN

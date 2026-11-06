@@ -187,6 +187,7 @@ fun LoginScreen(
         if (loginMethodTab == 0) {
             // Gmail + Password Login
             val cleanEmail = viewModel.sanitizeEmail(email)
+            email = cleanEmail
             val cleanPass = password.trim()
             if (cleanEmail.isBlank()) {
                 errorMessage = "দয়া করে আপনার জিমেইল / ইমেইল ঠিকানা লিখুন!"
@@ -197,6 +198,8 @@ fun LoginScreen(
             } else {
                 isLoading = true
                 errorMessage = ""
+                googleStatusMessage = ""
+                viewModel.clearLoginProviderHint()
                 focusManager.clearFocus()
                 viewModel.loginWithEmailPassword(cleanEmail, cleanPass) { success, msg, _ ->
                     isLoading = false
