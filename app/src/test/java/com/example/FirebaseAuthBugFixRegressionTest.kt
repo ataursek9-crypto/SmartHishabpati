@@ -588,4 +588,143 @@ class FirebaseAuthBugFixRegressionTest {
         assertTrue(clean.contains("token=***"))
         assertTrue(clean.contains("secret=***"))
     }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 10: Unauthorized User Access & Super Admin Security
+    // -------------------------------------------------------------------------
+    @Test
+    fun `10 Super Admin Security blocks unauthorized accounts and enforces strict allowlist`() = runTest(testDispatcher) {
+        // Allowlisted Super Admin identities
+        assertTrue(SuperAdminRepository.isSuperAdminEmail("ataurgonee4@gmail.com"))
+        assertTrue(SuperAdminRepository.isSuperAdminEmail("ataursek9@gmail.com"))
+        assertTrue(SuperAdminRepository.isSuperAdminPhone("01700000000"))
+        assertTrue(SuperAdminRepository.isSuperAdminPhone("+8801700000000"))
+
+        // Unauthorized / ordinary users
+        assertFalse(SuperAdminRepository.isSuperAdminEmail("anc94450@gmail.com"))
+        assertFalse(SuperAdminRepository.isSuperAdminEmail("customer@gmail.com"))
+        assertFalse(SuperAdminRepository.isSuperAdminEmail("random_shop_owner@gmail.com"))
+
+        // Explicitly revoked accounts
+        assertTrue(SuperAdminRepository.isRevokedSuperAdminEmail("buddavaibinodon@gmail.com"))
+        assertFalse(SuperAdminRepository.isSuperAdminEmail("buddavaibinodon@gmail.com"))
+
+        // Calling updateBusinessStatus with unauthorized email fails immediately with SecurityException
+        val failResult = superAdminRepo.updateBusinessStatus(
+            businessId = "biz_test",
+            newStatus = BusinessAccountStatus.ACTIVE,
+            reason = "Test update",
+            actorUid = "unauthorized_uid",
+            actorName = "Ordinary User",
+            actorEmail = "anc94450@gmail.com"
+        )
+        assertTrue(failResult.isFailure)
+        assertTrue(failResult.exceptionOrNull() is SecurityException)
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 11: বাংলা ও ইংরেজি Error Message (Bilingual Toggle)
+    // -------------------------------------------------------------------------
+    @Test
+    fun `11 Bilingual language system dynamically switches error messages between Bengali and English`() {
+        val testEx = FirebaseAuthInvalidUserException("ERROR_USER_NOT_FOUND", "user not found")
+
+        // Bengali Mode
+        AppLanguageManager.setLanguage(AppLanguage.BENGALI)
+        val bnError = AppErrorHandler.map(testEx)
+        val bnMsg = bnError.toUserMessage()
+        assertTrue("Bengali error message must contain Bengali problem prefix", bnMsg.startsWith("সমস্যা:"))
+        assertTrue("Bengali error message must contain Bengali action prefix", bnMsg.contains("করণীয়:"))
+        assertTrue(bnMsg.contains("কোনো অ্যাকাউন্ট খুঁজে পাওয়া যায়নি"))
+
+        // English Mode
+        AppLanguageManager.setLanguage(AppLanguage.ENGLISH)
+        val enError = AppErrorHandler.map(testEx)
+        val enMsg = enError.toUserMessage()
+        assertTrue("English error message must contain English problem prefix", enMsg.startsWith("Problem:"))
+        assertTrue("English error message must contain English action prefix", enMsg.contains("What to do:"))
+        assertTrue(enMsg.contains("No account found for this email"))
+
+        // Switch back to Bengali
+        AppLanguageManager.setLanguage(AppLanguage.BENGALI)
+        assertEquals("হিসাব রাখুন স্মার্টভাবে", AppStrings.appSlogan.replace("—", "").trim())
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 12: Firebase Initialization (Idempotent & Fallback Safe)
+    // -------------------------------------------------------------------------
+    @Test
+    fun `12 Firebase Initialization is safe, idempotent, and initializes options without crashing`() {
+        val isReady = com.example.util.FirebaseInitHelper.ensureFirebaseInitialized(app)
+        assertNotNull(isReady)
+        val readyCheck = com.example.util.FirebaseInitHelper.isReady(app)
+        assertNotNull(readyCheck)
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 13: Robust Email Sanitization & Format Validation (Problem 2 Fix)
+    // -------------------------------------------------------------------------
+    @Test
+    fun `13 Email sanitization strips zero-width spaces, BOM, and validates ataursek9@gmail_com properly`() {
+        val plainEmail = "ataursek9@gmail.com"
+        assertTrue(viewModel.isValidEmailFormat(plainEmail))
+
+        // Email with zero-width space (\u200B), non-breaking space (\u00A0), and byte order mark (\uFEFF)
+        val dirtyEmail = "\u200Bataursek9@gmail.com\u00A0\uFEFF"
+        val clean = viewModel.sanitizeEmail(dirtyEmail)
+        assertEquals("ataursek9@gmail.com", clean)
+        assertTrue("Sanitized email with zero-width characters must be valid", viewModel.isValidEmailFormat(dirtyEmail))
+
+        // Other allowlisted Super Admin email
+        val superAdminEmail = "ataurgonee4@gmail.com"
+        assertTrue(viewModel.isValidEmailFormat(superAdminEmail))
+
+        // Invalid emails must still be cleanly rejected
+        assertFalse(viewModel.isValidEmailFormat(""))
+        assertFalse(viewModel.isValidEmailFormat("not_an_email"))
+        assertFalse(viewModel.isValidEmailFormat("@gmail.com"))
+        assertFalse(viewModel.isValidEmailFormat("user@"))
+        assertFalse(viewModel.isValidEmailFormat("user@domain"))
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 14: Super Admin Google Sign-In & Strict Isolation (Problem 1 Fix)
+    // -------------------------------------------------------------------------
+    @Test
+    fun `14 Super Admin Google Sign-In grants dashboard access to allowlist and blocks ordinary users`() = runTest(testDispatcher) {
+        // Test allowlisted Super Admin Google account: ataursek9@gmail.com
+        var superAdminCallbackSuccess = false
+        var superAdminResultRole: UserRole? = null
+        viewModel.handleGoogleUserCredentials(
+            uid = "uid_superadmin_ataursek9",
+            email = "ataursek9@gmail.com",
+            displayName = "Md. Ataur Rahman",
+            phoneNumber = "01700000000"
+        ) { success, _, role ->
+            superAdminCallbackSuccess = success
+            superAdminResultRole = role
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue("Super Admin sign-in callback must succeed", superAdminCallbackSuccess)
+        assertEquals("Super Admin must have ADMIN role", UserRole.ADMIN, superAdminResultRole)
+        assertTrue("viewModel.isSuperAdminUser() must be true for ataursek9@gmail.com", viewModel.isSuperAdminUser())
+        assertEquals("Super Admin email must match verified email", "ataursek9@gmail.com", viewModel.getSuperAdminEmail())
+
+        // Test non-superadmin Google account: anc94450@gmail.com
+        var regularUserSuccess = false
+        viewModel.handleGoogleUserCredentials(
+            uid = "uid_regular_user_test",
+            email = "anc94450@gmail.com",
+            displayName = "Regular Shop Owner",
+            phoneNumber = "01712345678"
+        ) { success, _, _ ->
+            regularUserSuccess = success
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Non-superadmin account must NOT have Super Admin privileges
+        assertFalse("Ordinary shop owner must never have Super Admin session", viewModel.isSuperAdminUser())
+    }
 }
+

@@ -12,6 +12,9 @@ const {
   normalizeBangladeshiPhone,
   isValidBdMobile,
   timingSafeEqual,
+  setDbForTesting,
+  setAuthForTesting,
+  auditEmailAuthStatus,
 } = require('./index');
 
 describe('Smart Hishabpati Enterprise Zero-Trust Security Suite', () => {
@@ -548,5 +551,86 @@ describe('Smart Hishabpati Enterprise Zero-Trust Security Suite', () => {
     assert.strictEqual(merged[1].ownerUid, 'uid_anc94450');
     assert.notStrictEqual(merged[0].id, merged[1].id);
   });
+
+  // Test 14: auditEmailAuthStatus callable function executes safely with Google-only user
+  it('auditEmailAuthStatus returns GOOGLE_ONLY and existing shop count without ReferenceError', async () => {
+    const mockAuth = {
+      getUserByEmail: async (email) => {
+        if (email === 'anc94450@gmail.com') {
+          return {
+            uid: 'uid_anc94450_google_primary',
+            email: 'anc94450@gmail.com',
+            emailVerified: true,
+            providerData: [{ providerId: 'google.com', uid: 'anc94450@gmail.com' }],
+          };
+        }
+        const err = new Error('User not found');
+        err.code = 'auth/user-not-found';
+        throw err;
+      },
+    };
+    const mockDb = {
+      collection: (colName) => ({
+        where: (field, op, val) => ({
+          get: async () => ({
+            docs: [
+              {
+                id: 'biz_anc_shop_1',
+                data: () => ({
+                  businessName: 'অ্যাঙ্ক স্টোর',
+                  ownerUid: 'uid_anc94450_google_primary',
+                  ownerEmail: 'anc94450@gmail.com',
+                  ownerPhone: '01712345678',
+                }),
+              },
+            ],
+          }),
+        }),
+      }),
+    };
+
+    setAuthForTesting(mockAuth);
+    setDbForTesting(mockDb);
+
+    const result = await auditEmailAuthStatus({ email: 'anc94450@gmail.com' }, { auth: { uid: 'uid_anc94450_google_primary', token: { email: 'anc94450@gmail.com' } } });
+    assert.strictEqual(result.exists, true);
+    assert.strictEqual(result.providerType, 'GOOGLE_ONLY');
+    assert.strictEqual(result.hasGoogleProvider, true);
+    assert.strictEqual(result.hasPasswordProvider, false);
+    assert.strictEqual(result.hasExistingShop, true);
+    assert.strictEqual(result.shopCount, 1);
+    assert.strictEqual(result.uid, 'uid_anc94450_google_primary');
+    assert.strictEqual(result.shops.length, 1);
+  });
+
+  // Test 15: auditEmailAuthStatus handles non-existent user cleanly
+  it('auditEmailAuthStatus handles not-found email without crashing', async () => {
+    const mockAuth = {
+      getUserByEmail: async (_email) => {
+        const err = new Error('User not found');
+        err.code = 'auth/user-not-found';
+        throw err;
+      },
+    };
+    const mockDb = {
+      collection: () => ({
+        where: () => ({
+          get: async () => ({ docs: [] }),
+        }),
+      }),
+    };
+
+    setAuthForTesting(mockAuth);
+    setDbForTesting(mockDb);
+
+    const result = await auditEmailAuthStatus({ email: 'nonexistent@gmail.com' }, null);
+    assert.strictEqual(result.exists, false);
+    assert.strictEqual(result.providerType, 'NOT_FOUND');
+    assert.strictEqual(result.hasGoogleProvider, false);
+    assert.strictEqual(result.hasPasswordProvider, false);
+    assert.strictEqual(result.hasExistingShop, false);
+    assert.strictEqual(result.shopCount, 0);
+  });
 });
+
 

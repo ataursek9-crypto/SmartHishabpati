@@ -308,7 +308,7 @@ fun ShopRegistrationScreen(
         recoveryStatusMessage = ""
         focusManager.clearFocus()
 
-        val cleanEmail = email.trim().lowercase()
+        val cleanEmail = viewModel.sanitizeEmail(email)
         val cleanPhone = phone.trim()
 
         if (!viewModel.isValidEmailFormat(cleanEmail)) {
@@ -1197,7 +1197,7 @@ fun ShopRegistrationScreen(
                             OutlinedTextField(
                                 value = email,
                                 onValueChange = {
-                                    email = it
+                                    email = it.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F]"), "")
                                     errorMessage = ""
                                 },
                                 placeholder = { Text("ইমেইল (ঐচ্ছিক)", color = TextMuted) },

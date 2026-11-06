@@ -58,14 +58,15 @@ class SuperAdminRepository(
 
         fun isSuperAdminEmail(email: String?): Boolean {
             if (email.isNullOrBlank()) return false
-            val clean = email.trim().lowercase()
+            val clean = email.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F\\s]"), "").trim().lowercase()
             if (REVOKED_SUPER_ADMIN_EMAILS.contains(clean)) return false
             return AUTHORIZED_SUPER_ADMIN_EMAILS.contains(clean)
         }
 
         fun isRevokedSuperAdminEmail(email: String?): Boolean {
             if (email.isNullOrBlank()) return false
-            return REVOKED_SUPER_ADMIN_EMAILS.contains(email.trim().lowercase())
+            val clean = email.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F\\s]"), "").trim().lowercase()
+            return REVOKED_SUPER_ADMIN_EMAILS.contains(clean)
         }
 
         fun isSuperAdminPhone(phone: String?): Boolean {

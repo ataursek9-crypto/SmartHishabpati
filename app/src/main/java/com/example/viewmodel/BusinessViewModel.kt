@@ -511,7 +511,20 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
 
-            val adminUser = User(
+            val linkedUserId = com.example.data.sync.CloudBusinessAuth.getLinkedUserId(getApplication(), uid, cleanEmail)
+            val existingLocalUser = if (!linkedUserId.isNullOrBlank()) {
+                repository.getUserById(linkedUserId)
+            } else {
+                repository.getUserById(uid) ?: (if (phone.isNotBlank()) repository.getUserByPhone(phone) else null)
+            }
+
+            val adminUser = existingLocalUser?.copy(
+                name = if (name.isNotBlank() && name != "দোকান স্বত্বাধিকারী") name else existingLocalUser.name,
+                shopId = resolvedShopId,
+                role = UserRole.ADMIN,
+                isActive = true,
+                accountStatus = UserAccountStatus.ACTIVE
+            ) ?: User(
                 id = uid,
                 name = name,
                 phone = phone.ifBlank { "01700000000" },
@@ -2081,7 +2094,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     ) {
         viewModelScope.launch {
             val phone = phoneNumber ?: ""
-            val cleanEmail = email?.trim()?.lowercase() ?: ""
+            val cleanEmail = sanitizeEmail(email)
             val name = displayName ?: "গুগল ব্যবহারকারী"
 
             // Step 1: Check if this Google account is an AUTHORIZED PLATFORM SUPER ADMIN
@@ -2289,7 +2302,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             _currentUser.value = null
             onResult(
                 false,
-                "USER_HAS_NO_SHOPS: এই গুগল অ্যাকাউন্টের (${if (cleanEmail.isNotBlank()) cleanEmail else name}) অধীনে কোনো নিবন্ধিত দোকান পাওয়া যায়নি। অনুগ্রহ করে নিচের 'নতুন অ্যাকাউন্ট তৈরি করুন' অপশনে গিয়ে আপনার দোকান রেজিস্ট্রেশন করুন।",
+                "অননুমোদিত অ্যাকাউন্ট! USER_HAS_NO_SHOPS: এই গুগল অ্যাকাউন্টের (${if (cleanEmail.isNotBlank()) cleanEmail else name}) অধীনে কোনো অনুমোদিত বা নিবন্ধিত দোকান পাওয়া যায়নি। অনুগ্রহ করে নিচের 'নতুন অ্যাকাউন্ট তৈরি করুন' অপশনে গিয়ে আপনার দোকান রেজিস্ট্রেশন করুন।",
                 null
             )
         }
@@ -2537,10 +2550,22 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Sanitizes raw email input by stripping invisible zero-width spaces, non-breaking spaces,
+     * BOM, directional marks, and ASCII whitespace, returning clean lowercase email.
+     */
+    fun sanitizeEmail(input: String?): String {
+        if (input.isNullOrBlank()) return ""
+        return input.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F\\s]"), "")
+            .trim()
+            .lowercase()
+    }
+
+    /**
      * Validates standard email format without requiring android.util.Patterns runtime mock.
+     * Robust against zero-width characters and whitespace.
      */
     fun isValidEmailFormat(email: String): Boolean {
-        val clean = email.trim()
+        val clean = sanitizeEmail(email)
         if (clean.isBlank() || clean.length > 254) return false
         val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
         return emailRegex.matches(clean)
@@ -2552,7 +2577,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
      * safely even when Firebase Email Enumeration Protection is enabled.
      */
     suspend fun auditEmailAuthStatus(email: String): EmailAuthAuditResult {
-        val cleanEmail = email.trim().lowercase()
+        val cleanEmail = sanitizeEmail(email)
         if (!isValidEmailFormat(cleanEmail)) {
             return EmailAuthAuditResult(
                 email = cleanEmail,
@@ -2788,7 +2813,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?, List<PlatformBusiness>) -> Unit
     ) {
         viewModelScope.launch {
-            val cleanEmail = email.trim().lowercase()
+            val cleanEmail = sanitizeEmail(email)
             val cleanPass = password.trim()
                 .replace('০', '0').replace('১', '1').replace('২', '2')
                 .replace('৩', '3').replace('৪', '4').replace('৫', '5')
@@ -2913,7 +2938,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         onResult: (Boolean, String, com.google.firebase.auth.FirebaseUser?) -> Unit
     ) {
         viewModelScope.launch {
-            val cleanEmail = email.trim().lowercase()
+            val cleanEmail = sanitizeEmail(email)
             val cleanPass = password.trim()
             if (!isValidEmailFormat(cleanEmail)) {
                 onResult(false, "সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!", null)
@@ -3031,7 +3056,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
     ) {
         viewModelScope.launch {
             _loginProviderHint.value = AppErrorHandler.EmailAuthProviderType.UNKNOWN
-            val cleanEmail = email.trim().lowercase()
+            val cleanEmail = sanitizeEmail(email)
             val cleanPass = password.trim()
                 .replace('০', '0').replace('১', '1').replace('২', '2')
                 .replace('৩', '3').replace('৪', '4').replace('৫', '5')
@@ -3136,7 +3161,7 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
         onResult: (isSuccess: Boolean, isGoogleOnly: Boolean, message: String) -> Unit
     ) {
         viewModelScope.launch {
-            val cleanEmail = email.trim().lowercase()
+            val cleanEmail = sanitizeEmail(email)
             if (!isValidEmailFormat(cleanEmail)) {
                 val invalidErr = AppErrorHandler.mapPasswordResetError(IllegalArgumentException("invalid-email"))
                 onResult(false, false, invalidErr.toUserMessage())

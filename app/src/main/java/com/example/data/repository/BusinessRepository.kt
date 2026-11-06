@@ -333,10 +333,11 @@ class BusinessRepository(
         // Resolves shop and owner server-side, verifies PIN hash with timing-safe PBKDF2 comparison,
         // checks transactional rate limits & brute-force, and mints an official Firebase Auth Custom Token.
         var functionErrorMessage: String? = null
-        var isNetworkUnavailable = false
+        var isNetworkUnavailable = SuperAdminRepository.disableFirebaseForTesting
 
-        try {
-            val functions = FirebaseFunctions.getInstance()
+        if (!SuperAdminRepository.disableFirebaseForTesting) {
+            try {
+                val functions = FirebaseFunctions.getInstance()
             val requestData = hashMapOf<String, Any>(
                 "phone" to cleanPhone,
                 "pin" to cleanPin
@@ -540,22 +541,25 @@ class BusinessRepository(
                     return AuthResult.Error("সার্ভার প্রতিক্রিয়া ত্রুটি [${fnEx.code}]: ${fnEx.message ?: "অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।"}")
                 }
             }
-        } catch (ex: Exception) {
-            Log.w("BusinessRepo", "Firebase Cloud Function invocation notice: ${ex.message}", ex)
-            val rootCause = generateSequence(ex as Throwable) { it.cause }.lastOrNull() ?: ex
-            if (ex is java.io.IOException ||
-                ex is java.net.UnknownHostException ||
-                ex is java.net.SocketTimeoutException ||
-                ex is java.net.ConnectException ||
-                rootCause is java.io.IOException ||
-                rootCause is java.net.UnknownHostException ||
-                (ex is java.lang.IllegalStateException && ex.message?.contains("FirebaseApp") == true)
-            ) {
-                isNetworkUnavailable = true
-                functionErrorMessage = "ইন্টারনেট সংযোগ নেই বা নেটওয়ার্ক বিচ্ছিন্ন।"
-            } else {
-                // Unexpected runtime exceptions must NOT bypass server authentication
-                return AuthResult.Error("অনলাইন প্রমাণীকরণে ত্রুটি: ${ex.localizedMessage ?: "সার্ভার সংযোগ ব্যর্থ"}")
+            } catch (ex: Exception) {
+                Log.w("BusinessRepo", "Firebase Cloud Function invocation notice: ${ex.message}", ex)
+                val rootCause = generateSequence(ex as Throwable) { it.cause }.lastOrNull() ?: ex
+                if (ex is java.io.IOException ||
+                    ex is java.net.UnknownHostException ||
+                    ex is java.net.SocketTimeoutException ||
+                    ex is java.net.ConnectException ||
+                    rootCause is java.io.IOException ||
+                    rootCause is java.net.UnknownHostException ||
+                    (ex is java.lang.IllegalStateException && ex.message?.contains("FirebaseApp") == true) ||
+                    ex.javaClass.name.contains("Firebase") ||
+                    rootCause.javaClass.name.contains("Firebase")
+                ) {
+                    isNetworkUnavailable = true
+                    functionErrorMessage = "ইন্টারনেট সংযোগ নেই বা নেটওয়ার্ক বিচ্ছিন্ন।"
+                } else {
+                    // Unexpected runtime exceptions must NOT bypass server authentication
+                    return AuthResult.Error("অনলাইন প্রমাণীকরণে ত্রুটি: ${ex.localizedMessage ?: "সার্ভার সংযোগ ব্যর্থ"}")
+                }
             }
         }
 

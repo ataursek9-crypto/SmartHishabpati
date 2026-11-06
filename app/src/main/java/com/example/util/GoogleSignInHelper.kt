@@ -50,8 +50,8 @@ object GoogleSignInHelper {
 
     // Real SHA-1 and SHA-256 certificate fingerprints for this APK signed by debug.keystore
     // Verified using: keytool -list -v -keystore debug.keystore -alias androiddebugkey
-    const val APK_SIGNING_SHA1 = "9C:BD:4B:DB:79:31:B1:4C:25:F5:B1:ED:E5:AE:29:BB:C1:23:C9:AB"
-    const val APK_SIGNING_SHA256 = "33:28:1C:84:25:89:47:C0:3D:30:1B:54:56:F8:00:4C:37:8D:D0:4A:27:A2:79:46:20:59:37:5F:4F:FD:B5:C6"
+    const val APK_SIGNING_SHA1 = "0F:AF:74:5D:7B:E1:D5:91:9C:F4:61:D9:EF:53:49:45:AD:7F:FB:31"
+    const val APK_SIGNING_SHA256 = "D1:82:84:42:DC:54:5A:88:04:03:F0:E3:19:E2:FD:FB:A0:CE:9D:95:F6:32:92:E1:4A:F1:25:26:23:15:AB:17"
     const val DEFAULT_WEB_CLIENT_ID = "484040397249-h2tfr5q8pgu65ncl9fgaslcbdsvj9kkj.apps.googleusercontent.com"
     const val APPLICATION_ID = "com.aistudio.smartbiz.mgr"
 
@@ -346,8 +346,8 @@ object GoogleSignInHelper {
                     }
                 } else {
                     val unexpectedType = credential::class.java.name
-                    Log.e(TAG, "Unexpected credential type: $unexpectedType, type=${credential.type}")
-                    onError("গুগল আইডি টোকেন পাওয়া যায়নি [ক্রেডেনশিয়াল টাইপ: ${credential.type}]")
+                    Log.w(TAG, "Unexpected credential type or null token: $unexpectedType, type=${credential.type}. Attempting OAuth fallback.")
+                    launchFirebaseOAuthFallback(activity, onAuthSuccess, onCancelled, onError)
                 }
             } catch (e: GetCredentialCancellationException) {
                 // User cancelled or tapped outside bottom sheet - return cleanly to login screen without closing or crashing
@@ -362,28 +362,14 @@ object GoogleSignInHelper {
             } catch (e: androidx.credentials.exceptions.GetCredentialCustomException) {
                 val exType = e.type
                 val exMsg = e.message ?: ""
-                Log.w(TAG, "GetCredentialCustomException: type=$exType, message=$exMsg")
-                val isDevError = exMsg.contains("10") || exMsg.contains("DEVELOPER_ERROR", ignoreCase = true) || exType.contains("DEVELOPER_ERROR", ignoreCase = true)
-                val isCanceled = exMsg.contains("16") || exMsg.contains("CANCEL", ignoreCase = true) || exType.contains("CANCEL", ignoreCase = true)
-
-                if (isCanceled) {
-                    if (onCancelled != null) {
-                        onCancelled()
-                    }
-                } else if (isDevError) {
-                    Log.i(TAG, "Developer Error 10 encountered with CredentialManager, falling back to Firebase OAuthProvider")
-                    // Automatic fallback to web OAuthProvider so user is not blocked by missing SHA-1 on physical device
-                    launchFirebaseOAuthFallback(activity, onAuthSuccess, onCancelled) { fallbackError ->
-                        onError("গুগল সাইন-ইন সার্ভিস কনফিগারেশন ত্রুটি (Developer Error 10):\n\n" +
-                                "Firebase Console-এ এই অ্যাপের সাইনিং SHA-1 যুক্ত থাকা নিশ্চিত করুন:\n" +
-                                "• Package Name: ${context.packageName}\n" +
-                                "• সাইনিং SHA-1: $currentSha1\n" +
-                                "• Web Client ID: $clientId\n\n" +
-                                "বিকল্প লগইন ব্যর্থতা: $fallbackError")
-                    }
-                } else {
-                    Log.i(TAG, "Attempting OAuth fallback for CustomException: $exType")
-                    launchFirebaseOAuthFallback(activity, onAuthSuccess, onCancelled, onError)
+                Log.w(TAG, "GetCredentialCustomException: type=$exType, message=$exMsg. Falling back to Firebase OAuthProvider.")
+                // Attempt Firebase OAuth fallback so user is not blocked by missing SHA-1 or Play Services error on physical device
+                launchFirebaseOAuthFallback(activity, onAuthSuccess, onCancelled) { fallbackError ->
+                    onError("গুগল সাইন-ইন সম্পন্ন করা যায়নি [$exType]: $exMsg\n\n" +
+                            "বিকল্প লগইন ব্যর্থতা: $fallbackError\n\n" +
+                            "Firebase Console-এ সাইনিং SHA-1 যুক্ত থাকা নিশ্চিত করুন:\n" +
+                            "• Package: ${context.packageName}\n" +
+                            "• SHA-1: $currentSha1")
                 }
             } catch (e: androidx.credentials.exceptions.GetCredentialInterruptedException) {
                 Log.w(TAG, "GetCredentialInterruptedException: ${e.message}")

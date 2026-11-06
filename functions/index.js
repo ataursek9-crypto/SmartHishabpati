@@ -69,10 +69,17 @@ function setDbForTesting(customDb) {
   db = customDb;
 }
 
+let authClient = null;
 function setAuthForTesting(customAuth) {
   if (typeof customAuth === "function") {
+    try {
+      authClient = customAuth();
+    } catch (_e) {
+      authClient = null;
+    }
     admin.auth = customAuth;
   } else if (customAuth) {
+    authClient = customAuth;
     admin.auth = () => customAuth;
   }
 }

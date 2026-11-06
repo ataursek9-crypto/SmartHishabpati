@@ -186,10 +186,12 @@ fun LoginScreen(
     val triggerLogin = {
         if (loginMethodTab == 0) {
             // Gmail + Password Login
-            val cleanEmail = email.trim().lowercase()
+            val cleanEmail = viewModel.sanitizeEmail(email)
             val cleanPass = password.trim()
-            if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
-                errorMessage = "দয়া করে সঠিক জিমেইল / ইমেইল ঠিকানা লিখুন!"
+            if (cleanEmail.isBlank()) {
+                errorMessage = "দয়া করে আপনার জিমেইল / ইমেইল ঠিকানা লিখুন!"
+            } else if (!viewModel.isValidEmailFormat(cleanEmail)) {
+                errorMessage = "সমস্যা: ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।\nকরণীয়: অনুগ্রহ করে সঠিক ফরম্যাটের জিমেইল লিখুন (যেমন: user@gmail.com)।"
             } else if (cleanPass.isBlank()) {
                 errorMessage = "দয়া করে আপনার পাসওয়ার্ড লিখুন!"
             } else {
@@ -726,7 +728,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = email,
                             onValueChange = {
-                                email = it
+                                email = it.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F]"), "")
                                 errorMessage = ""
                             },
                             placeholder = { Text(if (AppLanguageManager.isEnglish()) "Your registered Gmail address" else "আপনার নিবন্ধিত Gmail ঠিকানা", color = Color(0xFF94A3B8)) },
@@ -1630,7 +1632,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = forgotPasswordEmailInput,
                         onValueChange = {
-                            forgotPasswordEmailInput = it
+                            forgotPasswordEmailInput = it.replace(Regex("[\\u200B-\\u200D\\uFEFF\\u00A0\\u202F\\u00AD\\u200E\\u200F]"), "")
                             forgotPasswordStatusMsg = ""
                             isPasswordResetSuccess = false
                             isGoogleOnlyAccountPrompt = false
