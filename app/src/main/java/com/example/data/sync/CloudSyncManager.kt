@@ -976,6 +976,27 @@ class CloudSyncManager(
         val businessId = resolveOrFetchBusinessId()
         val isSalesman = isCurrentActiveSalesman()
 
+        // Security Enforcement: Verify this device's active session is not revoked
+        try {
+            val sessionManager = com.example.data.backend.FirestoreSessionManager(context, firestore)
+            val isValid = sessionManager.isCurrentSessionValid(businessId, sessionManager.getLocalDeviceId())
+            if (!isValid) {
+                Log.e(TAG, "DEVICE_SESSION_REVOKED: This device session has been revoked by the store Admin.")
+                cancelActiveSync()
+                stopProductsRealtimeListener()
+                _syncState.value = SyncState(
+                    status = SyncStatus.ERROR,
+                    statusText = "নিরাপত্তা সতর্কতা: এই ডিভাইসের সেশন অ্যাডমিন কর্তৃক বাতিল (Revoked) করা হয়েছে।",
+                    errorMessage = "Device session revoked by Admin."
+                )
+                throw SecurityException("DEVICE_SESSION_REVOKED: This device session was revoked by the store administrator.")
+            }
+        } catch (secEx: SecurityException) {
+            throw secEx
+        } catch (e: Exception) {
+            Log.w(TAG, "Device session check notice: ${e.message}")
+        }
+
         // 0. Synchronize Business Profile & Staff Membership
         try {
             syncBusinessAndStaff(firestore, businessId, isSalesman)

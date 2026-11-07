@@ -517,7 +517,16 @@ class BusinessRepository(
             Log.w("BusinessRepo", "FirebaseFunctionsException [${fnEx.code}]: ${fnEx.message}")
             when (fnEx.code) {
                 FirebaseFunctionsException.Code.NOT_FOUND -> {
-                    return AuthResult.Error(fnEx.message ?: "এই মোবাইল নম্বর দিয়ে কোনো নিবন্ধিত দোকান খুঁজে পাওয়া যায়নি!")
+                    val existingLocal = db.userDao().getUserByPhone(cleanPhone)
+                        ?: db.userDao().getUserByPhone(rawTrimmed)
+                        ?: db.userDao().getUserByPhone(e164)
+                        ?: db.userDao().getAllUsersList().firstOrNull { CloudBusinessAuth.matchesPhone(it.phone, cleanPhone) }
+                    if (existingLocal != null && existingLocal.pinHash == inputHash) {
+                        isNetworkUnavailable = true
+                        functionErrorMessage = "ক্লাউড ফাংশন অনুপলব্ধ; স্থানীয় ডিভাইসে সংরক্ষিত যাচাইকৃত তথ্যের ভিত্তিতে প্রবেশ অনুমোদিত হয়েছে।"
+                    } else {
+                        return AuthResult.Error(fnEx.message?.takeIf { it != "NOT_FOUND" } ?: "এই মোবাইল নম্বর দিয়ে কোনো নিবন্ধিত দোকান খুঁজে পাওয়া যায়নি!")
+                    }
                 }
                 FirebaseFunctionsException.Code.UNAUTHENTICATED -> {
                     return AuthResult.Error(fnEx.message ?: "ভুল পিন কোড! পুনরায় সঠিক পিন দিয়ে চেষ্টা করুন।")

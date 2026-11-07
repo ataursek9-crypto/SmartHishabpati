@@ -1207,7 +1207,10 @@ class BusinessViewModel(application: Application) : AndroidViewModel(application
             }
             when (val auth = repository.authenticateUser(phone, pin)) {
                 is BusinessRepository.AuthResult.Success -> {
-                    if (auth.user.role == UserRole.ADMIN || auth.user.role == UserRole.SUPER_ADMIN) {
+                    val isSuperAdminAccount = repository.isAuthorizedSuperAdminPhone(auth.user.phone) ||
+                            auth.user.role == UserRole.SUPER_ADMIN ||
+                            (auth.user.id == "admin_1" && auth.user.phone == "01700000000")
+                    if (isSuperAdminAccount) {
                         _currentUser.value = null
                         onResult(false, "অননুমোদিত প্রবেশ! এডমিন অ্যাকাউন্ট সাধারণ স্ক্রিন থেকে লগইন করা যাবে না। লোগোতে ৫ বার ট্যাপ করে গোপন এডমিন পোর্টাল থেকে প্রবেশ করুন।")
                         return@launch

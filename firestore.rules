@@ -34,7 +34,7 @@ service cloud.firestore {
     // Explicit revocation check
     function isRevokedSuperAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email != null && (
+        (('email' in request.auth.token) && request.auth.token.email != null && (
           request.auth.token.email in [
             'buddavaibinodon@gmail.com',
             'gonee8666@gmail.com',
@@ -117,7 +117,7 @@ service cloud.firestore {
         isBusinessOwner(businessId) ||
         (exists(/databases/$(database)/documents/businesses/$(businessId)/staff/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/businesses/$(businessId)/staff/$(request.auth.uid)).data.isActive == true) ||
-        (request.auth.token.email != null &&
+        (('email' in request.auth.token) && request.auth.token.email != null &&
          exists(/databases/$(database)/documents/businesses/$(businessId)/staff_by_email/$(request.auth.token.email)) &&
          get(/databases/$(database)/documents/businesses/$(businessId)/staff_by_email/$(request.auth.token.email)).data.isActive == true) ||
         (exists(/databases/$(database)/documents/staff_memberships/$(request.auth.uid)) &&
@@ -183,7 +183,14 @@ service cloud.firestore {
              (!('paidAmount' in data) || (data.paidAmount is number && data.paidAmount >= 0)) &&
              (!('dueAmount' in data) || data.dueAmount is number) &&
              (!('isDeleted' in data) || data.isDeleted is bool) &&
-             (!('items' in data) || data.items is list);
+             (!('items' in data) || data.items is list) &&
+             (!('deviceId' in data) || (data.deviceId is string && data.deviceId.size() <= 128));
+    }
+
+    function isDeviceAllowed(businessId, data) {
+      return !('deviceId' in data) ||
+             !exists(/databases/$(database)/documents/businesses/$(businessId)/active_devices/$(data.deviceId)) ||
+             get(/databases/$(database)/documents/businesses/$(businessId)/active_devices/$(data.deviceId)).data.isRevoked != true;
     }
 
     function isValidReceipt(data) {
@@ -249,7 +256,7 @@ service cloud.firestore {
         isBusinessStaff(businessId) ||
         (resource != null && (
           resource.data.ownerUid == request.auth.uid ||
-          (request.auth.token.email != null && 'ownerEmail' in resource.data && resource.data.ownerEmail == request.auth.token.email.lower())
+          (('email' in request.auth.token) && request.auth.token.email != null && 'ownerEmail' in resource.data && resource.data.ownerEmail == request.auth.token.email.lower())
         ))
       ));
       allow list: if isSuperAdmin() || (isSignedIn() && (
@@ -302,8 +309,8 @@ service cloud.firestore {
       // 3. Sales (Invoices) - Staff can create & sync, only Owner can delete
       match /sales/{invoiceNumber} {
         allow get, list: if isBusinessStaff(businessId);
-        allow create: if isBusinessStaff(businessId) && isValidSale(incoming());
-        allow update: if (isBusinessOwner(businessId) || isBusinessStaff(businessId)) && isValidSale(incoming());
+        allow create: if isBusinessStaff(businessId) && isValidSale(incoming()) && isDeviceAllowed(businessId, incoming());
+        allow update: if (isBusinessOwner(businessId) || isBusinessStaff(businessId)) && isValidSale(incoming()) && isDeviceAllowed(businessId, incoming());
         allow delete: if isBusinessOwner(businessId);
       }
 
@@ -321,15 +328,16 @@ service cloud.firestore {
         allow update, delete: if isBusinessOwner(businessId);
       }
 
-      // 6. Staff Accounts - Managed only by Owner
+      // 6. Staff Accounts - Managed only by Owner; staff can only view own record
       match /staff/{staffUid} {
-        allow get, list: if isBusinessStaff(businessId);
+        allow get: if isBusinessOwner(businessId) || (isSignedIn() && request.auth.uid == staffUid);
+        allow list: if isBusinessOwner(businessId);
         allow create, update, delete: if isBusinessOwner(businessId);
       }
 
-      // 7. Shop Settings & Configuration - Managed only by Owner
+      // 7. Shop Settings & Configuration - Managed & viewed only by Owner
       match /settings/{settingId} {
-        allow get, list: if isBusinessStaff(businessId);
+        allow get, list: if isBusinessOwner(businessId);
         allow create, update, delete: if isBusinessOwner(businessId);
       }
 
@@ -356,10 +364,28 @@ service cloud.firestore {
 
       match /staff_by_email/{email} {
         allow get: if isSignedIn() && (
-          (request.auth.token.email != null && (request.auth.token.email == email || request.auth.token.email.matches('(?i)^' + email + '$'))) ||
+          ((('email' in request.auth.token) && request.auth.token.email != null && (request.auth.token.email == email || request.auth.token.email.matches('(?i)^' + email + '$')))) ||
           isBusinessOwner(businessId)
         );
         allow list, create, update, delete: if isBusinessOwner(businessId);
+      }
+
+      // 11. Active Device Sessions & Remote Revocation
+      match /active_devices/{deviceId} {
+        allow get, list: if isBusinessStaff(businessId);
+        allow create: if isBusinessOwner(businessId) || (
+                         isBusinessStaff(businessId) &&
+                         incoming().deviceId == deviceId &&
+                         incoming().userId == request.auth.uid &&
+                         (!('isRevoked' in incoming()) || incoming().isRevoked == false)
+                      );
+        allow update: if isBusinessOwner(businessId) || (
+          isBusinessStaff(businessId) &&
+          existing().userId == request.auth.uid &&
+          existing().isRevoked != true &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['isRevoked', 'userId', 'deviceId'])
+        );
+        allow delete: if isBusinessOwner(businessId);
       }
     }
 
@@ -457,6 +483,13 @@ service cloud.firestore {
       allow list: if isSuperAdmin();
       allow create: if isSuperAdmin() || (isMasterAdminEmail() && request.auth.uid == uid);
       allow update, delete: if isSuperAdmin();
+    }
+
+    // 19. User Identity Mappings (Server-Verified Account Linking between Firebase & Supabase)
+    match /user_identity_mappings/{firebaseUid} {
+      allow get: if isSuperAdmin() || (isSignedIn() && request.auth.uid == firebaseUid);
+      allow create, update: if isSignedIn() && request.auth.uid == firebaseUid && incoming().firebaseUid == request.auth.uid;
+      allow delete: if isSuperAdmin();
     }
   }
 }
