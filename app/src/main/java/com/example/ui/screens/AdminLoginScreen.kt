@@ -55,36 +55,50 @@ fun AdminLoginScreen(
     val isAlreadySuperAdminEmail = currentFUser != null &&
         com.example.data.repository.SuperAdminRepository.isSuperAdminEmail(currentFUser.email)
 
-    // Check pending OAuth redirect task when returning from Chrome Custom Tab / browser
-    LaunchedEffect(Unit) {
-        val activity = GoogleSignInHelper.findActivity(context)
-        GoogleSignInHelper.checkPendingAuthResult(
-            activity = activity,
-            onAuthSuccess = { fUser ->
-                isGoogleLoading = false
-                viewModel.handleGoogleSignInSuccess(fUser) { success, msg, role ->
-                    if (success) {
-                        if (role == UserRole.ADMIN || viewModel.isSuperAdminUser()) {
-                            onAdminLoginSuccess()
-                        } else {
-                            errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
+    // Lifecycle observer: Check pending OAuth redirect task when activity resumes from browser
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val activity = GoogleSignInHelper.findActivity(context)
+                GoogleSignInHelper.checkPendingAuthResult(
+                    activity = activity,
+                    onAuthSuccess = { fUser ->
+                        isGoogleLoading = false
+                        val cleanEmail = fUser.email?.trim()?.lowercase() ?: ""
+                        val isAuthorized = com.example.data.repository.SuperAdminRepository.isSuperAdminEmail(cleanEmail) ||
+                            com.example.data.repository.SuperAdminRepository.isSuperAdminPhone(fUser.phoneNumber)
+                        if (!isAuthorized) {
+                            errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email ?: "অজানা"})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
+                            return@checkPendingAuthResult
                         }
-                    } else {
-                        errorMessage = msg
+                        viewModel.handleGoogleSignInSuccess(fUser) { success, msg, role ->
+                            if (success && (role == UserRole.ADMIN || viewModel.isSuperAdminUser())) {
+                                onAdminLoginSuccess()
+                            } else if (!success) {
+                                errorMessage = msg
+                            } else {
+                                errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
+                            }
+                        }
+                    },
+                    onError = { err ->
+                        isGoogleLoading = false
+                        errorMessage = err
                     }
-                }
-            },
-            onError = { err ->
-                isGoogleLoading = false
-                errorMessage = err
+                )
             }
-        )
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // Safety timeout: Ensure isGoogleLoading never hangs indefinitely if user dismisses external browser
     LaunchedEffect(isGoogleLoading) {
         if (isGoogleLoading) {
-            kotlinx.coroutines.delay(25000L)
+            kotlinx.coroutines.delay(15000L)
             if (isGoogleLoading) {
                 isGoogleLoading = false
             }
@@ -413,16 +427,22 @@ fun AdminLoginScreen(
                                 context = context,
                                 scope = coroutineScope,
                                 onAuthSuccess = { fUser ->
+                                    val cleanEmail = fUser.email?.trim()?.lowercase() ?: ""
+                                    val isAuthorized = com.example.data.repository.SuperAdminRepository.isSuperAdminEmail(cleanEmail) ||
+                                        com.example.data.repository.SuperAdminRepository.isSuperAdminPhone(fUser.phoneNumber)
+                                    if (!isAuthorized) {
+                                        isGoogleLoading = false
+                                        errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email ?: "অজানা"})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন (${com.example.data.repository.SuperAdminRepository.AUTHORIZED_SUPER_ADMIN_EMAILS.joinToString(", ")}) প্রবেশ করতে পারবেন।"
+                                        return@launchGoogleSignIn
+                                    }
                                     viewModel.handleGoogleSignInSuccess(fUser) { success, msg, role ->
                                         isGoogleLoading = false
-                                        if (success) {
-                                            if (role == UserRole.ADMIN || viewModel.isSuperAdminUser()) {
-                                                onAdminLoginSuccess()
-                                            } else {
-                                                errorMessage = "অননুমোদিত অ্যাকাউন্ট! শুধুমাত্র অ্যাডমিন অথবা সুপার অ্যাডমিন গুগল অ্যাকাউন্ট প্রবেশ করতে পারবেন।"
-                                            }
-                                        } else {
+                                        if (success && (role == UserRole.ADMIN || viewModel.isSuperAdminUser())) {
+                                            onAdminLoginSuccess()
+                                        } else if (!success) {
                                             errorMessage = msg
+                                        } else {
+                                            errorMessage = "অননুমোদিত অ্যাকাউন্ট (${fUser.email})! শুধুমাত্র অনুমোদিত সুপার অ্যাডমিন প্রবেশ করতে পারবেন।"
                                         }
                                     }
                                 },

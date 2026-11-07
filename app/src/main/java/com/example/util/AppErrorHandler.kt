@@ -122,13 +122,22 @@ object AppErrorHandler {
             )
         }
 
-        // 4b. Firebase Authentication: Invalid Email Address Format (checked before generic credentials)
-        if (errCode == "ERROR_INVALID_EMAIL" ||
+        // 4b. Firebase Authentication: Invalid Email Address Format (strictly excluded if error is credential/password related)
+        val isCredentialsOrPasswordError = error is FirebaseAuthInvalidCredentialsException ||
+            errCode == "ERROR_INVALID_CREDENTIAL" ||
+            errCode == "INVALID_LOGIN_CREDENTIALS" ||
+            errCode == "ERROR_WRONG_PASSWORD" ||
+            msg.contains("password", ignoreCase = true) ||
+            msg.contains("credential", ignoreCase = true)
+
+        if (!isCredentialsOrPasswordError && (
+            errCode == "ERROR_INVALID_EMAIL" ||
+            errCode == "invalid-email" ||
             msg.contains("badly formatted", ignoreCase = true) ||
-            msg.contains("invalid email", ignoreCase = true) ||
             msg.contains("invalid-email", ignoreCase = true) ||
-            msg.contains("invalid_email", ignoreCase = true)
-        ) {
+            msg.contains("invalid_email", ignoreCase = true) ||
+            (msg.contains("invalid email", ignoreCase = true) && !msg.contains("password", ignoreCase = true) && !msg.contains("credential", ignoreCase = true))
+        )) {
             return AppError(
                 problemBn = "ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়।",
                 whatToDoBn = "অনুগ্রহ করে সঠিক ফরম্যাটের জিমেইল লিখুন (যেমন: user@gmail.com)।",

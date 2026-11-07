@@ -188,6 +188,16 @@ tasks.register("exportProjectZip") {
         rootApk.copyTo(java.io.File(sessionArtifactDir, "SmartBusinessManager.apk"), overwrite = true)
         rootApk.copyTo(java.io.File(sessionArtifactDir, "SmartHishabpati.apk"), overwrite = true)
 
+        val thisSessionArtifactDir = file(".aistudio/artifacts/brain/1f7cca72-97a4-4e56-bdbd-7f7c256b646c")
+        if (!thisSessionArtifactDir.exists()) {
+            thisSessionArtifactDir.mkdirs()
+        }
+        exportZipFile.copyTo(java.io.File(thisSessionArtifactDir, "SmartBusinessManager_Export.zip"), overwrite = true)
+        hishabpatiProjectZip.copyTo(java.io.File(thisSessionArtifactDir, "SmartHishabpati_Project.zip"), overwrite = true)
+        hishabpatiProjectZip.copyTo(java.io.File(thisSessionArtifactDir, "SmartBusinessManager_Project.zip"), overwrite = true)
+        rootApk.copyTo(java.io.File(thisSessionArtifactDir, "SmartBusinessManager.apk"), overwrite = true)
+        rootApk.copyTo(java.io.File(thisSessionArtifactDir, "SmartHishabpati.apk"), overwrite = true)
+
         // Verification: inspect SmartHishabpati_Project.zip
         val zipVerifyProj = java.util.zip.ZipFile(hishabpatiProjectZip)
         val apkAtRoot = zipVerifyProj.getEntry("SmartHishabpati.apk")

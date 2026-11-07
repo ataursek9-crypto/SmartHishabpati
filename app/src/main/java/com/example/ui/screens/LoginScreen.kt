@@ -170,6 +170,42 @@ fun LoginScreen(
         }
     }
 
+    // Lifecycle observer: Check pending Google OAuth redirect result on activity resume
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val activity = GoogleSignInHelper.findActivity(context)
+                GoogleSignInHelper.checkPendingAuthResult(
+                    activity = activity,
+                    onAuthSuccess = { fUser ->
+                        isGoogleLoading = false
+                        viewModel.handleGoogleSignInSuccess(fUser) { success, msg, _ ->
+                            if (success) {
+                                onLoginSuccess()
+                            } else {
+                                googleStatusMessage = msg
+                                pendingGoogleUser = fUser
+                                linkBusinessIdInput = viewModel.getActiveBusinessId()
+                                linkPhoneInput = phone.ifBlank { "" }
+                                linkPinInput = ""
+                                linkErrorMessage = ""
+                            }
+                        }
+                    },
+                    onError = { err ->
+                        isGoogleLoading = false
+                        googleStatusMessage = err
+                    }
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // Gentle, low-memory floating animation for the top illustration (runs at 60fps with zero battery drain)
     val infiniteTransition = rememberInfiniteTransition(label = "heroFloat")
     val floatOffset by infiniteTransition.animateFloat(

@@ -726,5 +726,28 @@ class FirebaseAuthBugFixRegressionTest {
         // Non-superadmin account must NOT have Super Admin privileges
         assertFalse("Ordinary shop owner must never have Super Admin session", viewModel.isSuperAdminUser())
     }
+
+    // -------------------------------------------------------------------------
+    // Regression Case 15: Valid Gmail is never misidentified as Invalid Email on Credential Failures
+    // -------------------------------------------------------------------------
+    @Test
+    fun `15 Valid ataursek9@gmail_com is never flagged as Invalid Email on credential failure or Firebase invalid email or password message`() {
+        val email = "ataursek9@gmail.com"
+        assertTrue(viewModel.isValidEmailFormat(email))
+
+        // When Firebase returns FirebaseAuthInvalidCredentialsException containing "invalid email or password"
+        val exWithEmailPassword = FirebaseAuthInvalidCredentialsException(
+            "ERROR_INVALID_CREDENTIAL",
+            "The supplied auth credential is incorrect: invalid email or password"
+        )
+        val mappedErr = AppErrorHandler.map(exWithEmailPassword)
+        assertNotEquals("Must NEVER map to INVALID_EMAIL when message is about credential/password failure", "INVALID_EMAIL", mappedErr.rawErrorCode)
+        assertEquals("INVALID_CREDENTIAL", mappedErr.rawErrorCode)
+        assertFalse("Must never claim email format is bad", mappedErr.toUserMessage().contains("ইমেইল ঠিকানাটির ফরম্যাট সঠিক নয়"))
+
+        val loginErr = AppErrorHandler.mapLoginError(exWithEmailPassword, AppErrorHandler.EmailAuthProviderType.GOOGLE_ONLY)
+        assertEquals("GOOGLE_ONLY_ACCOUNT", loginErr.rawErrorCode)
+        assertTrue(loginErr.toUserMessage().contains("Google দিয়ে প্রবেশ করুন"))
+    }
 }
 
